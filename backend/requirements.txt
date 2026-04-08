@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+celery
+redis
+openai
+ffmpeg-python
+python-multipart
