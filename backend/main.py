@@ -1,9 +1,8 @@
 import os
 import uuid
 import json
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import redis as redis_client
 from tasks import process_video, r
 
 app = FastAPI(title="HALOS Video Insight Assistant")
@@ -20,7 +19,7 @@ UPLOAD_DIR = "/tmp/uploads"
 
 
 @app.post("/analyze")
-async def analyze_video(file: UploadFile = File(...)):
+async def analyze_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(UPLOAD_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
@@ -35,7 +34,7 @@ async def analyze_video(file: UploadFile = File(...)):
     # Initialize job state
     r.hset(f"job:{job_id}", mapping={"status": "pending"})
 
-    process_video.delay(job_id, video_path)
+    background_tasks.add_task(process_video, job_id, video_path)
 
     return {"job_id": job_id}
 

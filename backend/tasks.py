@@ -1,13 +1,8 @@
-import os
 import json
-from celery import Celery
-import redis as redis_client
+import fakeredis
 from pipeline import extract_audio, transcribe, analyze
 
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
-
-app = Celery("tasks", broker=REDIS_URL, backend=REDIS_URL)
-r = redis_client.from_url(REDIS_URL)
+r = fakeredis.FakeRedis()
 
 
 def _set_status(job_id: str, status: str, result=None):
@@ -17,7 +12,6 @@ def _set_status(job_id: str, status: str, result=None):
     r.hset(f"job:{job_id}", mapping=data)
 
 
-@app.task(name="tasks.process_video")
 def process_video(job_id: str, video_path: str):
     try:
         _set_status(job_id, "processing")

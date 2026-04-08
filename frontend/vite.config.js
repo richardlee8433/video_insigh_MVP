@@ -7,8 +7,8 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     proxy: {
-      "/analyze": "http://backend:8000",
-      "/status": "http://backend:8000",
+      "/analyze": "http://localhost:8000",
+      "/status": "http://localhost:8000",
     },
   },
 });

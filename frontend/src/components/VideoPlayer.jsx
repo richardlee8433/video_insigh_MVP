@@ -1,66 +1,29 @@
-import React, {
-  useEffect,
-  useRef,
-  useState,
-  forwardRef,
-  useImperativeHandle,
-} from "react";
-import Plyr from "plyr";
+import React, { useRef, useState, forwardRef, useImperativeHandle } from "react";
 
 const VideoPlayer = forwardRef(function VideoPlayer({ videoUrl, events, onSeek }, ref) {
   const videoEl = useRef(null);
-  const plyrInstance = useRef(null);
   const [duration, setDuration] = useState(0);
   const [hoveredEvent, setHoveredEvent] = useState(null);
 
   useImperativeHandle(ref, () => ({
     seekTo(seconds) {
-      if (plyrInstance.current) {
-        plyrInstance.current.currentTime = seconds;
-        plyrInstance.current.play();
-      }
+      if (!videoEl.current) return;
+      videoEl.current.currentTime = seconds;
+      videoEl.current.play()?.catch(() => {});
     },
   }));
-
-  useEffect(() => {
-    if (!videoEl.current) return;
-
-    plyrInstance.current = new Plyr(videoEl.current, {
-      controls: [
-        "play-large",
-        "play",
-        "progress",
-        "current-time",
-        "mute",
-        "volume",
-        "fullscreen",
-      ],
-      tooltips: { controls: true },
-    });
-
-    const player = plyrInstance.current;
-
-    const onReady = () => {
-      setDuration(player.duration || 0);
-    };
-
-    const onDurationChange = () => {
-      setDuration(player.duration || 0);
-    };
-
-    player.on("ready", onReady);
-    player.on("durationchange", onDurationChange);
-    player.on("loadedmetadata", onDurationChange);
-
-    return () => {
-      player.destroy();
-    };
-  }, [videoUrl]);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-lg overflow-hidden bg-black">
-        <video ref={videoEl} src={videoUrl} playsInline />
+        <video
+          ref={videoEl}
+          src={videoUrl}
+          controls
+          playsInline
+          className="w-full"
+          onLoadedMetadata={() => setDuration(videoEl.current?.duration || 0)}
+        />
       </div>
 
       {/* Timeline markers */}
