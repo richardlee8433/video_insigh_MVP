@@ -24,7 +24,8 @@ async def analyze_video(background_tasks: BackgroundTasks, file: UploadFile = Fi
     job_dir = os.path.join(UPLOAD_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
 
-    ext = os.path.splitext(file.filename)[1] if file.filename else ".mp4"
+    original_filename = file.filename or "video.mp4"
+    ext = os.path.splitext(original_filename)[1] if original_filename else ".mp4"
     video_path = os.path.join(job_dir, f"video{ext}")
 
     contents = await file.read()
@@ -34,7 +35,7 @@ async def analyze_video(background_tasks: BackgroundTasks, file: UploadFile = Fi
     # Initialize job state
     r.hset(f"job:{job_id}", mapping={"status": "pending"})
 
-    background_tasks.add_task(process_video, job_id, video_path)
+    background_tasks.add_task(process_video, job_id, video_path, original_filename)
 
     return {"job_id": job_id}
 
@@ -46,7 +47,17 @@ async def get_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     status = data.get(b"status", b"pending").decode()
+    stage = data.get(b"stage", b"").decode() or None
     result_raw = data.get(b"result")
     result = json.loads(result_raw) if result_raw else None
 
-    return {"status": status, "result": result}
+    return {"status": status, "stage": stage, "result": result}
+
+
+@app.get("/audit/{job_id}")
+async def get_audit(job_id: str):
+    audit_path = f"/tmp/uploads/{job_id}/audit_log.json"
+    if not os.path.exists(audit_path):
+        raise HTTPException(status_code=404, detail="Audit log not found")
+    with open(audit_path) as f:
+        return json.load(f)

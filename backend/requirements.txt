@@ -4,3 +4,4 @@ fakeredis
 openai
 ffmpeg-python
 python-multipart
+Pillow

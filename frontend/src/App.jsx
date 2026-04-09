@@ -3,12 +3,16 @@ import { uploadVideo, pollUntilDone } from "./api";
 import VideoPlayer from "./components/VideoPlayer";
 import InsightsPanel from "./components/InsightsPanel";
 import SearchPanel from "./components/SearchPanel";
+import VersionToggle from "./components/VersionToggle";
 
 export default function App() {
   const [appState, setAppState] = useState("idle"); // idle | uploading | processing | done | error
   const [uploadProgress, setUploadProgress] = useState(0);
   const [result, setResult] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
+  const [jobId, setJobId] = useState(null);
+  const [activeVersion, setActiveVersion] = useState("v2");
+  const [processingStage, setProcessingStage] = useState(null);
   const playerRef = useRef(null);
 
   const handleSeek = useCallback((seconds) => {
@@ -21,28 +25,31 @@ export default function App() {
     if (!file) return;
     setAppState("uploading");
     setUploadProgress(0);
+    setProcessingStage(null);
 
-    // Simulate progress during upload
     const progressInterval = setInterval(() => {
       setUploadProgress((p) => Math.min(p + 10, 90));
     }, 200);
 
     try {
-      const jobId = await uploadVideo(file);
+      const id = await uploadVideo(file);
       clearInterval(progressInterval);
       setUploadProgress(100);
+      setJobId(id);
 
       const blobUrl = URL.createObjectURL(file);
       setVideoUrl(blobUrl);
       setAppState("processing");
 
       pollUntilDone(
-        jobId,
+        id,
         (analysisResult) => {
           setResult(analysisResult);
+          setActiveVersion("v2");
           setAppState("done");
         },
-        () => setAppState("error")
+        () => setAppState("error"),
+        ({ stage }) => setProcessingStage(stage),
       );
     } catch {
       clearInterval(progressInterval);
@@ -60,6 +67,15 @@ export default function App() {
   );
 
   const handleDragOver = (e) => e.preventDefault();
+
+  // Derive active data from result based on selected version
+  const activeData = result
+    ? activeVersion === "v2"
+      ? result.v2
+      : result.v1
+    : null;
+
+  const v2Data = result?.v2 || null;
 
   if (appState === "idle") {
     return (
@@ -114,17 +130,52 @@ export default function App() {
   }
 
   if (appState === "processing") {
+    const stages = [
+      { key: "extracting", label: "Transcribing audio" },
+      { key: "analyzing_v1", label: "Analyzing with v1.0 (text)" },
+      { key: "analyzing_v2", label: "Analyzing with v2.0 (vision)" },
+    ];
+    const currentIdx = stages.findIndex((s) => s.key === processingStage);
+
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8">
         <Header />
         <div className="mt-10 text-center">
           <div className="inline-block w-12 h-12 border-4 border-brand-border border-t-brand-orange rounded-full animate-spin mb-6" />
-          <p className="text-lg font-semibold text-slate-200">
+          <p className="text-lg font-semibold text-slate-200 mb-6">
             Analyzing footage...
           </p>
-          <p className="text-sm text-slate-400 mt-2">
-            This takes about 30 seconds
-          </p>
+          <div className="flex flex-col gap-2 text-left max-w-xs mx-auto">
+            {stages.map((stage, idx) => {
+              const done = currentIdx > idx;
+              const active = currentIdx === idx;
+              return (
+                <div key={stage.key} className="flex items-center gap-3">
+                  <span className="w-5 text-center text-sm">
+                    {done ? (
+                      <span className="text-green-400">✓</span>
+                    ) : active ? (
+                      <span className="text-brand-orange animate-pulse">⟳</span>
+                    ) : (
+                      <span className="text-slate-600">○</span>
+                    )}
+                  </span>
+                  <span
+                    className={`text-sm ${
+                      done
+                        ? "text-green-400"
+                        : active
+                        ? "text-slate-200"
+                        : "text-slate-600"
+                    }`}
+                  >
+                    {stage.label}
+                    {done && " ✓"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -163,6 +214,8 @@ export default function App() {
           onClick={() => {
             setAppState("idle");
             setResult(null);
+            setJobId(null);
+            setProcessingStage(null);
             if (videoUrl) URL.revokeObjectURL(videoUrl);
             setVideoUrl(null);
           }}
@@ -174,23 +227,34 @@ export default function App() {
 
       <div className="flex flex-1 overflow-hidden p-4 gap-4">
         {/* Left: Video player (60%) */}
-        <div className="w-3/5 flex flex-col">
+        <div className="w-3/5 flex flex-col gap-3">
           <VideoPlayer
             ref={playerRef}
             videoUrl={videoUrl}
-            events={result?.events || []}
+            events={activeData?.events || []}
             onSeek={handleSeek}
           />
+          <div className="flex justify-start">
+            <VersionToggle
+              activeVersion={activeVersion}
+              setActiveVersion={setActiveVersion}
+            />
+          </div>
         </div>
 
         {/* Right: Insights + Search (40%) */}
         <div className="w-2/5 flex flex-col gap-4 overflow-hidden">
           <InsightsPanel
-            summary={result?.summary || ""}
-            events={result?.events || []}
+            summary={activeData?.summary || ""}
+            events={activeData?.events || []}
             onSeek={handleSeek}
+            activeVersion={activeVersion}
+            jobId={jobId}
+            fileHash={v2Data?.file_hash || null}
+            filename={v2Data?.filename || null}
+            analyzedAt={v2Data?.audit?.analyzed_at || null}
           />
-          <SearchPanel events={result?.events || []} onSeek={handleSeek} />
+          <SearchPanel events={activeData?.events || []} onSeek={handleSeek} />
         </div>
       </div>
     </div>

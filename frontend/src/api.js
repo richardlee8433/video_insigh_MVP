@@ -15,10 +15,17 @@ export async function getStatus(jobId) {
   return res.json();
 }
 
-export function pollUntilDone(jobId, onDone, onError, interval = 2000) {
+export async function getAudit(jobId) {
+  const res = await fetch(`${BASE_URL}/audit/${jobId}`);
+  if (!res.ok) throw new Error(`Audit fetch failed: ${res.status}`);
+  return res.json();
+}
+
+export function pollUntilDone(jobId, onDone, onError, onProgress = null, interval = 2000) {
   const timer = setInterval(async () => {
     try {
-      const { status, result } = await getStatus(jobId);
+      const { status, stage, result } = await getStatus(jobId);
+      if (onProgress) onProgress({ status, stage });
       if (status === "done") {
         clearInterval(timer);
         onDone(result);
