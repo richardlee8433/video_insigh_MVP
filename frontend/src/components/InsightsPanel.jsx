@@ -14,8 +14,12 @@ export default function InsightsPanel({
   const isV2 = activeVersion === "v2";
 
   async function handleDownloadReport() {
+    console.log("[EvidenceReport] button clicked, jobId:", jobId);
     try {
+      console.log("[EvidenceReport] fetching audit for job:", jobId);
       const audit = await getAudit(jobId);
+      console.log("[EvidenceReport] audit data received:", audit);
+
       const eventsText = events
         .map((e) => `${e.timestamp} — ${e.label}\n${e.description}`)
         .join("\n\n");
@@ -40,15 +44,21 @@ export default function InsightsPanel({
         "Original file integrity has been verified via SHA-256 hash.",
       ].join("\n");
 
+      console.log("[EvidenceReport] report built, triggering download");
       const blob = new Blob([report], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `${(audit.filename || "video").replace(/\.[^.]+$/, "")}_evidence_report.txt`;
+      // Must be in the DOM for Firefox/Safari to fire the download
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      // Revoke after a tick so the browser has time to start the download
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+      console.log("[EvidenceReport] download triggered");
     } catch (err) {
-      console.error("Failed to download evidence report:", err);
+      console.error("[EvidenceReport] failed:", err);
     }
   }
 
