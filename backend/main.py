@@ -56,8 +56,12 @@ async def get_status(job_id: str):
 
 @app.get("/audit/{job_id}")
 async def get_audit(job_id: str):
-    audit_path = f"/tmp/uploads/{job_id}/audit_log.json"
+    audit_path = os.path.join(UPLOAD_DIR, job_id, "audit_log.json")
     if not os.path.exists(audit_path):
-        raise HTTPException(status_code=404, detail="Audit log not found")
-    with open(audit_path) as f:
-        return json.load(f)
+        raise HTTPException(status_code=404, detail=f"Audit log not found for job {job_id}")
+    try:
+        with open(audit_path) as f:
+            data = json.load(f)
+        return data
+    except (OSError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read audit log: {e}")

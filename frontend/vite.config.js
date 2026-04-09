@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       "/analyze": "http://localhost:8000",
       "/status": "http://localhost:8000",
+      "/audit": "http://localhost:8000",
     },
   },
 });
