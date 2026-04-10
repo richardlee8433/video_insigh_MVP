@@ -18,6 +18,11 @@ app.add_middleware(
 UPLOAD_DIR = "/tmp/uploads"
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.post("/analyze")
 async def analyze_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     job_id = str(uuid.uuid4())
