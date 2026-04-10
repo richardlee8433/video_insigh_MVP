@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || 'https://video-insigh-mvp.onrender.com';
+const BASE_URL = 'https://video-insigh-mvp.onrender.com';
 
 export async function uploadVideo(file) {
   const form = new FormData();
