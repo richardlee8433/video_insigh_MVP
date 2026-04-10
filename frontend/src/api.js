@@ -1,4 +1,4 @@
-const BASE_URL = 'https://video-insigh-mvp.onrender.com';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export async function uploadVideo(file) {
   const form = new FormData();
@@ -19,6 +19,36 @@ export async function getAudit(jobId) {
   const res = await fetch(`${BASE_URL}/audit/${jobId}`);
   if (!res.ok) throw new Error(`Audit fetch failed: ${res.status}`);
   return res.json();
+}
+
+export async function startStreaming(jobId, onToken, onDone, onError) {
+  try {
+    const response = await fetch(`${BASE_URL}/analyze-stream/${jobId}`, {
+      method: "POST",
+    });
+    if (!response.ok) throw new Error(`Stream failed: ${response.status}`);
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulated = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      const lines = chunk.split("\n");
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const token = line.slice(6);
+          accumulated += token;
+          onToken(accumulated);
+        }
+      }
+    }
+    onDone(accumulated);
+  } catch (err) {
+    onError(err);
+  }
 }
 
 export function pollUntilDone(jobId, onDone, onError, onProgress = null, interval = 2000) {

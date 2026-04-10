@@ -131,47 +131,105 @@ export default function App() {
 
   if (appState === "processing") {
     const stages = [
-      { key: "extracting", label: "Transcribing audio" },
-      { key: "analyzing_v1", label: "Analyzing with v1.0 (text)" },
-      { key: "analyzing_v2", label: "Analyzing with v2.0 (vision)" },
+      { key: "extracting", label: "Listening to footage...", icon: "waveform" },
+      { key: "analyzing_v1", label: "Reading transcript...", icon: "cursor" },
+      { key: "analyzing_v2", label: "Watching the footage...", icon: "scanner" },
     ];
     const currentIdx = stages.findIndex((s) => s.key === processingStage);
 
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8">
+        <style>{`
+          @keyframes waveform {
+            0%, 100% { height: 8px; }
+            50% { height: 24px; }
+          }
+          @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+          }
+          @keyframes scan {
+            0% { top: 0%; }
+            100% { top: 100%; }
+          }
+          .waveform-bar {
+            width: 4px;
+            background-color: #f97316;
+            border-radius: 2px;
+            animation: waveform 0.8s ease-in-out infinite;
+          }
+          .cursor-blink {
+            display: inline-block;
+            width: 8px;
+            height: 16px;
+            background-color: #f97316;
+            animation: blink 1s step-end infinite;
+            vertical-align: middle;
+            margin-left: 4px;
+          }
+          .scanner-box {
+            position: relative;
+            width: 48px;
+            height: 48px;
+            border: 2px solid #334155;
+            overflow: hidden;
+          }
+          .scanner-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background-color: #f97316;
+            box-shadow: 0 0 8px #f97316;
+            animation: scan 1.5s linear infinite alternate;
+          }
+        `}</style>
         <Header />
         <div className="mt-10 text-center">
-          <div className="inline-block w-12 h-12 border-4 border-brand-border border-t-brand-orange rounded-full animate-spin mb-6" />
-          <p className="text-lg font-semibold text-slate-200 mb-6">
-            Analyzing footage...
-          </p>
-          <div className="flex flex-col gap-2 text-left max-w-xs mx-auto">
+          <div className="flex justify-center mb-8 h-12 items-center">
+            {processingStage === "extracting" && (
+              <div className="flex items-end gap-1 h-6">
+                <div className="waveform-bar" style={{ animationDelay: "0s" }} />
+                <div className="waveform-bar" style={{ animationDelay: "0.1s" }} />
+                <div className="waveform-bar" style={{ animationDelay: "0.2s" }} />
+                <div className="waveform-bar" style={{ animationDelay: "0.3s" }} />
+                <div className="waveform-bar" style={{ animationDelay: "0.4s" }} />
+              </div>
+            )}
+            {processingStage === "analyzing_v1" && (
+              <div className="text-2xl font-mono text-slate-400">
+                <span className="text-brand-orange">_</span>
+                <div className="cursor-blink" />
+              </div>
+            )}
+            {processingStage === "analyzing_v2" && (
+              <div className="scanner-box rounded-lg">
+                <div className="scanner-line" />
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-4 text-left max-w-xs mx-auto">
             {stages.map((stage, idx) => {
               const done = currentIdx > idx;
               const active = currentIdx === idx;
+              const pending = currentIdx < idx;
+              
               return (
-                <div key={stage.key} className="flex items-center gap-3">
-                  <span className="w-5 text-center text-sm">
-                    {done ? (
-                      <span className="text-green-400">✓</span>
-                    ) : active ? (
-                      <span className="text-brand-orange animate-pulse">⟳</span>
-                    ) : (
-                      <span className="text-slate-600">○</span>
-                    )}
-                  </span>
-                  <span
-                    className={`text-sm ${
-                      done
-                        ? "text-green-400"
-                        : active
-                        ? "text-slate-200"
-                        : "text-slate-600"
-                    }`}
-                  >
-                    {stage.label}
-                    {done && " ✓"}
-                  </span>
+                <div key={stage.key} className="flex flex-col">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${done ? "bg-green-500" : active ? "bg-brand-orange" : "bg-slate-700"}`} />
+                    <span
+                      className={`text-sm font-medium transition-colors duration-300 ${
+                        done
+                          ? "text-green-400"
+                          : active
+                          ? "text-brand-orange"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {stage.label}
+                    </span>
+                  </div>
                 </div>
               );
             })}

@@ -13,6 +13,48 @@ export default function InsightsPanel({
 }) {
   const isV2 = activeVersion === "v2";
 
+  // Typewriter effect state
+  const [displayedSummary, setDisplayedSummary] = React.useState("");
+  const [revealedEventsCount, setRevealedEventsCount] = React.useState(0);
+
+  React.useEffect(() => {
+    if (isV2 && typeof summary === "string" && summary.length > 0) {
+      setDisplayedSummary("");
+      const words = summary.trim().split(/\s+/);
+      let currentWord = 0;
+      const timer = setInterval(() => {
+        if (currentWord < words.length) {
+          const nextWord = words[currentWord];
+          if (nextWord !== undefined) {
+            setDisplayedSummary((prev) => (prev ? prev + " " + nextWord : nextWord));
+          }
+          currentWord++;
+        } else {
+          clearInterval(timer);
+        }
+      }, 50); // Word by word
+      return () => clearInterval(timer);
+    } else {
+      setDisplayedSummary(summary || "");
+    }
+  }, [summary, isV2]);
+
+  React.useEffect(() => {
+    if (isV2 && events.length > 0) {
+      setRevealedEventsCount(0);
+      const timer = setInterval(() => {
+        setRevealedEventsCount((prev) => {
+          if (prev < events.length) return prev + 1;
+          clearInterval(timer);
+          return prev;
+        });
+      }, 200); // 200ms delay between events
+      return () => clearInterval(timer);
+    } else {
+      setRevealedEventsCount(events.length);
+    }
+  }, [events, isV2]);
+
   async function handleDownloadReport() {
     console.log("[EvidenceReport] button clicked, jobId:", jobId);
     try {
@@ -86,7 +128,12 @@ export default function InsightsPanel({
 
       {/* Summary */}
       <div className="px-4 py-3 border-b border-brand-border">
-        <p className="text-sm text-slate-300 leading-relaxed">{summary}</p>
+        <p className="text-sm text-slate-300 leading-relaxed min-h-[4em]">
+          {displayedSummary}
+          {isV2 && displayedSummary !== summary && (
+            <span className="inline-block w-2 h-4 bg-brand-orange ml-1 animate-pulse align-middle" />
+          )}
+        </p>
       </div>
 
       {/* Evidence Integrity (v2 only) */}
@@ -120,7 +167,17 @@ export default function InsightsPanel({
 
       <div className="overflow-y-auto flex-1">
         {events.map((event, i) => (
-          <EventRow key={i} event={event} onSeek={onSeek} />
+          <div
+            key={i}
+            className="transition-all duration-500"
+            style={{
+              opacity: i < revealedEventsCount ? 1 : 0,
+              transform: i < revealedEventsCount ? "translateY(0)" : "translateY(10px)",
+              pointerEvents: i < revealedEventsCount ? "auto" : "none",
+            }}
+          >
+            <EventRow event={event} onSeek={onSeek} />
+          </div>
         ))}
       </div>
     </div>

@@ -138,5 +138,69 @@ def analyze_v2(segments: list, frames: list) -> dict:
     return json.loads(raw)
 
 
+def analyze_v2_stream(segments: list, frames: list):
+    """Vision analysis (v2.0) streaming — uses frames + transcript."""
+    transcript_lines = []
+    for seg in segments:
+        ts = _format_timestamp(seg["start"])
+        transcript_lines.append(f"[{ts}] {seg['text']}")
+    transcript_text = "\n".join(transcript_lines)
+
+    n = len(frames)
+    vision_intro = (
+        f"You have access to {n} frames extracted from the video every 30 seconds. "
+        "Use both the visual frames AND the transcript to identify key events. "
+        "For each event, note if it was detected visually, from audio, or both."
+    )
+
+    # Build image content blocks (cap at 10 frames)
+    image_blocks = []
+    for frame_path in frames[:10]:
+        with open(frame_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        image_blocks.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"},
+        })
+
+    user_content = [
+        {"type": "text", "text": vision_intro},
+        *image_blocks,
+        {"type": "text", "text": USER_TEMPLATE.format(transcript_text=transcript_text)},
+    ]
+
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=0.2,
+        stream=True
+    )
+
+    started = False
+    for chunk in response:
+        delta = chunk.choices[0].delta.content
+        if not delta:
+            continue
+        
+        # Strip potential markdown prefix
+        if not started:
+            if "```" in delta:
+                delta = delta.split("```")[-1]
+                if delta.startswith("json"):
+                    delta = delta[4:]
+            started = True
+        
+        # Strip potential markdown suffix
+        if "```" in delta:
+            delta = delta.split("```")[0]
+        
+        if delta:
+            yield delta
+
+
 # Backward-compatible alias
 analyze = analyze_v1

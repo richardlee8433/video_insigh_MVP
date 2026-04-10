@@ -3,7 +3,9 @@ import uuid
 import json
 from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from tasks import process_video, r
+from pipeline import analyze_v2_stream
 
 app = FastAPI(title="HALOS Video Insight Assistant")
 
@@ -70,3 +72,34 @@ async def get_audit(job_id: str):
         return data
     except (OSError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=500, detail=f"Failed to read audit log: {e}")
+
+
+@app.post("/analyze-stream/{job_id}")
+async def analyze_stream(job_id: str):
+    data = r.hgetall(f"job:{job_id}")
+    if not data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    segments_raw = data.get(b"segments")
+    if not segments_raw:
+        raise HTTPException(status_code=400, detail="Transcription not yet complete")
+
+    segments = json.loads(segments_raw)
+
+    job_dir = os.path.join(UPLOAD_DIR, job_id)
+    frames_dir = os.path.join(job_dir, "frames")
+    if not os.path.exists(frames_dir):
+        raise HTTPException(status_code=400, detail="Frames not yet extracted")
+
+    frames = sorted([
+        os.path.join(frames_dir, f)
+        for f in os.listdir(frames_dir)
+        if f.startswith("frame_") and f.endswith(".jpg")
+    ])
+
+    async def event_generator():
+        for chunk in analyze_v2_stream(segments, frames):
+            # SSE format: data: {token}\n\n
+            yield f"data: {chunk}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

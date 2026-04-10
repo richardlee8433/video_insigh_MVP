@@ -28,6 +28,9 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
 
         transcript = transcribe(audio_path)
         segments = transcript["segments"]
+        
+        # Store segments for streaming analysis
+        r.hset(f"job:{job_id}", "segments", json.dumps(segments))
 
         # Block 1: Extract frames for vision analysis
         frames = extract_frames(video_path, job_id)
