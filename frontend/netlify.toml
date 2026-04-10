@@ -1,0 +1,26 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/analyze"
+  to = "https://YOUR-RENDER-URL/analyze"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/status/*"
+  to = "https://YOUR-RENDER-URL/status/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/audit/*"
+  to = "https://YOUR-RENDER-URL/audit/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
