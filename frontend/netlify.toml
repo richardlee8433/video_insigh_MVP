@@ -4,19 +4,19 @@
 
 [[redirects]]
   from = "/analyze"
-  to = "https://YOUR-RENDER-URL/analyze"
+  to = "https://video-insigh-mvp.onrender.com/analyze"
   status = 200
   force = true
 
 [[redirects]]
   from = "/status/*"
-  to = "https://YOUR-RENDER-URL/status/:splat"
+  to = "https://video-insigh-mvp.onrender.com/status/:splat"
   status = 200
   force = true
 
 [[redirects]]
   from = "/audit/*"
-  to = "https://YOUR-RENDER-URL/audit/:splat"
+  to = "https://video-insigh-mvp.onrender.com/audit/:splat"
   status = 200
   force = true
 
