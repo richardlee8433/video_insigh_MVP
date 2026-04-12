@@ -10,6 +10,7 @@ export default function LiveMonitor() {
   const [sessionId, setSessionId] = useState(null);
   const [connStatus, setConnStatus] = useState("Disconnected"); // Disconnected | Connected | Error | Stalled
   const [errorMessage, setErrorMessage] = useState("");
+  const [isVideoReady, setIsVideoReady] = useState(false);
   
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -19,7 +20,12 @@ export default function LiveMonitor() {
   const stallTimer = useRef(null);
 
   const destroyHls = () => {
+    if (samplingInterval.current) {
+      clearInterval(samplingInterval.current);
+      samplingInterval.current = null;
+    }
     if (hlsRef.current) {
+      hlsRef.current.detachMedia();
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
@@ -27,6 +33,7 @@ export default function LiveMonitor() {
       clearTimeout(stallTimer.current);
       stallTimer.current = null;
     }
+    setIsVideoReady(false);
   };
 
   const connectStream = () => {
@@ -54,7 +61,17 @@ export default function LiveMonitor() {
         setConnStatus("Connected");
         setIsActive(true);
         setSessionId(`live_${new Date().getTime()}`);
-        videoRef.current.play().catch(e => console.error("Auto-play failed:", e));
+        
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            if (error.name === "AbortError") {
+              console.log("Playback interrupted by new load request (AbortError).");
+            } else {
+              console.error("Auto-play failed:", error);
+            }
+          });
+        }
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
@@ -102,7 +119,17 @@ export default function LiveMonitor() {
         setConnStatus("Connected");
         setIsActive(true);
         setSessionId(`live_${new Date().getTime()}`);
-        videoRef.current.play();
+        
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            if (error.name === "AbortError") {
+              console.log("Playback interrupted by new load request (AbortError).");
+            } else {
+              console.error("Native play failed:", error);
+            }
+          });
+        }
       });
       videoRef.current.addEventListener("error", () => {
         setErrorMessage("Stream Offline — Check URL");
@@ -122,9 +149,6 @@ export default function LiveMonitor() {
     }
     setIsActive(false);
     setConnStatus("Disconnected");
-    if (samplingInterval.current) {
-      clearInterval(samplingInterval.current);
-    }
   };
 
   const calculatePixelDiff = (currentData, previousData) => {
@@ -146,6 +170,15 @@ export default function LiveMonitor() {
     if (!videoRef.current || !canvasRef.current || !isActive) return;
 
     const video = videoRef.current;
+    
+    // Metadata Guard: Verify dimensions are valid before sampling
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      if (isVideoReady) setIsVideoReady(false);
+      return;
+    }
+    
+    if (!isVideoReady) setIsVideoReady(true);
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     
@@ -204,16 +237,18 @@ export default function LiveMonitor() {
         };
       }, "image/jpeg", 0.7);
     }
-  }, [isActive, sessionId]);
+  }, [isActive, sessionId, isVideoReady]);
 
   useEffect(() => {
     if (isActive) {
       samplingInterval.current = setInterval(captureFrame, 5000);
     } else {
-      if (samplingInterval.current) clearInterval(samplingInterval.current);
+      if (samplingInterval.current) {
+        clearInterval(samplingInterval.current);
+        samplingInterval.current = null;
+      }
     }
     return () => {
-      if (samplingInterval.current) clearInterval(samplingInterval.current);
       destroyHls();
     };
   }, [isActive, captureFrame]);
@@ -250,6 +285,15 @@ export default function LiveMonitor() {
             crossOrigin="anonymous"
             className="w-full h-full object-contain"
           />
+
+          {isActive && !isVideoReady && !errorMessage && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-white font-bold text-sm tracking-widest uppercase">Buffering Stream...</p>
+              </div>
+            </div>
+          )}
 
           {errorMessage && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 backdrop-blur-sm p-8 text-center">
