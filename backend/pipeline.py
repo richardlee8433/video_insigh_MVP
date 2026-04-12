@@ -205,9 +205,19 @@ def analyze_v2_stream(segments: list, frames: list):
 def analyze_live_frame(base64_frame: str) -> dict:
     """Analyze a single live frame using GPT-4o Vision."""
     system_prompt = (
-        "You are a security AI for retail and law enforcement environments. "
-        "Analyze this frame and return ONLY valid JSON. "
-        "Focus on: aggressive gestures, unauthorized entry, unusual crowding, weapons."
+        "You are a professional Video Forensics AI for retail and law enforcement environments. "
+        "Analyze this security camera frame and identify threats. "
+        "Focus on: "
+        "1. Violence or physical altercations "
+        "2. Suspect objects (weapons, masks, unusual items) "
+        "3. Tailgating or unauthorized entry into restricted zones "
+        "4. Unusual crowding or aggressive group behavior "
+        "\n\nReturn ONLY valid JSON: "
+        "{"
+        "  'label': '[NORMAL]' | '[CAUTION]' | '[ALERT]',"
+        "  'description': 'one sentence description of what you see',"
+        "  'confidence': 0.0-1.0"
+        "}"
     )
     
     client = openai.OpenAI()
