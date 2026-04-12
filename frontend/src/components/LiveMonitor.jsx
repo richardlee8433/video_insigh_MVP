@@ -11,6 +11,7 @@ export default function LiveMonitor() {
   const [connStatus, setConnStatus] = useState("Disconnected"); // Disconnected | Connected | Error | Stalled
   const [errorMessage, setErrorMessage] = useState("");
   const [isVideoReady, setIsVideoReady] = useState(false);
+  const [showForcePlay, setShowForcePlay] = useState(false);
   
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -18,6 +19,8 @@ export default function LiveMonitor() {
   const prevFrameData = useRef(null);
   const samplingInterval = useRef(null);
   const stallTimer = useRef(null);
+  const forcePlayTimer = useRef(null);
+  const hasTaintedCanvasWarned = useRef(false);
 
   const destroyHls = () => {
     if (samplingInterval.current) {
@@ -33,10 +36,28 @@ export default function LiveMonitor() {
       clearTimeout(stallTimer.current);
       stallTimer.current = null;
     }
+    if (forcePlayTimer.current) {
+      clearTimeout(forcePlayTimer.current);
+      forcePlayTimer.current = null;
+    }
     setIsVideoReady(false);
+    setShowForcePlay(false);
+    hasTaintedCanvasWarned.current = false;
   };
 
-  const connectStream = () => {
+  const handleMetadata = useCallback(() => {
+    if (videoRef.current && videoRef.current.videoWidth > 0) {
+      console.log("Metadata loaded, stream dimensions confirmed:", videoRef.current.videoWidth, "x", videoRef.current.videoHeight);
+      setIsVideoReady(true);
+      setShowForcePlay(false);
+      if (forcePlayTimer.current) {
+        clearTimeout(forcePlayTimer.current);
+        forcePlayTimer.current = null;
+      }
+    }
+  }, []);
+
+  const connectStream = useCallback(() => {
     if (!streamUrl) {
       setErrorMessage("Please enter a stream URL");
       setConnStatus("Error");
@@ -62,6 +83,9 @@ export default function LiveMonitor() {
         setIsActive(true);
         setSessionId(`live_${new Date().getTime()}`);
         
+        // Explicitly start loading after manifest is parsed
+        hls.startLoad();
+
         const playPromise = videoRef.current.play();
         if (playPromise !== undefined) {
           playPromise.catch(error => {
@@ -71,6 +95,13 @@ export default function LiveMonitor() {
               console.error("Auto-play failed:", error);
             }
           });
+        }
+
+        // Start force play timer for dev mode
+        if (import.meta.env.DEV) {
+          forcePlayTimer.current = setTimeout(() => {
+            if (!isVideoReady) setShowForcePlay(true);
+          }, 5000);
         }
       });
 
@@ -115,22 +146,20 @@ export default function LiveMonitor() {
     } else if (videoRef.current.canPlayType("application/vnd.apple.mpegurl")) {
       // Native Safari support
       videoRef.current.src = streamUrl;
-      videoRef.current.addEventListener("loadedmetadata", () => {
-        setConnStatus("Connected");
-        setIsActive(true);
-        setSessionId(`live_${new Date().getTime()}`);
-        
-        const playPromise = videoRef.current.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            if (error.name === "AbortError") {
-              console.log("Playback interrupted by new load request (AbortError).");
-            } else {
-              console.error("Native play failed:", error);
-            }
-          });
-        }
-      });
+      
+      // Native metadata listener is handled by the useEffect event registration
+      
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          if (error.name === "AbortError") {
+            console.log("Playback interrupted by new load request (AbortError).");
+          } else {
+            console.error("Native play failed:", error);
+          }
+        });
+      }
+      
       videoRef.current.addEventListener("error", () => {
         setErrorMessage("Stream Offline — Check URL");
         setConnStatus("Error");
@@ -139,7 +168,26 @@ export default function LiveMonitor() {
       setErrorMessage("CORS blocked or Browser not supported. In production, use a proxy server or ensure CCTV system allows cross-origin access.");
       setConnStatus("Error");
     }
-  };
+  }, [streamUrl, isVideoReady]);
+
+  // HLS Initialization Effect - refined dependencies
+  useEffect(() => {
+    if (isActive) {
+      connectStream();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamUrl]); // streamUrl as the only dependency for HLS initialization logic
+
+  // Metadata Event Listener Effect
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video) {
+      video.addEventListener("loadedmetadata", handleMetadata);
+    }
+    return () => {
+      if (video) video.removeEventListener("loadedmetadata", handleMetadata);
+    };
+  }, [handleMetadata]);
 
   const stopLive = () => {
     destroyHls();
@@ -197,7 +245,10 @@ export default function LiveMonitor() {
         prevFrameData.current = currentFrameData;
       }
     } catch (err) {
-      console.warn("Canvas tainted or getImageData failed, sending frame anyway:", err);
+      if (!hasTaintedCanvasWarned.current) {
+        console.warn("Canvas tainted or getImageData failed, sending frame anyway:", err);
+        hasTaintedCanvasWarned.current = true;
+      }
       // Requirement: skip pixel diff silently on tainted canvas, continue analysis
     }
     
@@ -249,7 +300,10 @@ export default function LiveMonitor() {
       }
     }
     return () => {
-      destroyHls();
+      if (samplingInterval.current) {
+        clearInterval(samplingInterval.current);
+        samplingInterval.current = null;
+      }
     };
   }, [isActive, captureFrame]);
 
@@ -291,6 +345,16 @@ export default function LiveMonitor() {
               <div className="flex flex-col items-center gap-3">
                 <div className="w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full animate-spin"></div>
                 <p className="text-white font-bold text-sm tracking-widest uppercase">Buffering Stream...</p>
+                {import.meta.env.DEV && showForcePlay && (
+                  <button
+                    onClick={() => {
+                      if (videoRef.current) videoRef.current.play().catch(e => console.error("Force play failed:", e));
+                    }}
+                    className="mt-2 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] rounded border border-slate-700 transition-colors uppercase font-bold"
+                  >
+                    Force Play (Dev Only)
+                  </button>
+                )}
               </div>
             </div>
           )}
