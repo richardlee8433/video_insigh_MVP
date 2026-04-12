@@ -107,6 +107,14 @@ export default function LiveMonitor() {
 
       hls.on(Hls.Events.ERROR, (event, data) => {
         console.error("HLS Error:", data);
+        
+        if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+          // Non-fatal, attempt recovery
+          console.log("Buffer stalled, attempting recovery...");
+          hls.recoverMediaError();
+          return;
+        }
+
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
@@ -228,7 +236,7 @@ export default function LiveMonitor() {
     if (!isVideoReady) setIsVideoReady(true);
 
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -266,7 +274,7 @@ export default function LiveMonitor() {
         reader.onloadend = async () => {
           const base64data = reader.result.split(',')[1];
           try {
-            const result = await analyzeLiveFrame(base64data, hashHex, sessionId);
+            const result = await analyzeLiveFrame(base64data, hashHex);
             const newAlert = {
               ...result,
               id: Date.now(),

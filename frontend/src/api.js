@@ -71,12 +71,12 @@ export function pollUntilDone(jobId, onDone, onError, onProgress = null, interva
 return () => clearInterval(timer);
 }
 
-export async function analyzeLiveFrame(frameBase64, frameHash, jobId = null) {
-const res = await fetch(`${BASE_URL}/analyze-live-frame`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ frame: frameBase64, hash: frameHash, job_id: jobId }),
-});
-if (!res.ok) throw new Error(`Live analysis failed: ${res.status}`);
-return res.json();
+export async function analyzeLiveFrame(base64Frame, hash) {
+  const response = await fetch(`${BASE_URL}/analyze-live-frame`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frame: base64Frame, hash })
+  })
+  if (!response.ok) throw new Error(`Live analysis failed: ${response.status}`)
+  return response.json()
 }
