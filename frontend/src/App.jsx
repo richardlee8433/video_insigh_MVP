@@ -4,8 +4,10 @@ import VideoPlayer from "./components/VideoPlayer";
 import InsightsPanel from "./components/InsightsPanel";
 import SearchPanel from "./components/SearchPanel";
 import VersionToggle from "./components/VersionToggle";
+import LiveMonitor from "./components/LiveMonitor";
 
 export default function App() {
+  const [viewMode, setViewMode] = useState("upload"); // upload | live
   const [appState, setAppState] = useState("idle"); // idle | uploading | processing | done | error
   const [uploadProgress, setUploadProgress] = useState(0);
   const [result, setResult] = useState(null);
@@ -77,9 +79,62 @@ export default function App() {
 
   const v2Data = result?.v2 || null;
 
-  if (appState === "idle") {
+  const renderHeader = () => (
+    <header className="flex items-center justify-between px-6 py-3 border-b border-brand-border bg-[#0f1117] w-full">
+      <div className="flex items-center gap-3">
+        <span className="text-brand-orange font-bold text-xl tracking-wide">
+          HALOS
+        </span>
+        <span className="text-slate-400 text-sm">Video Insight Assistant</span>
+        <div className="ml-4 flex bg-brand-border/30 p-1 rounded-lg">
+          <button
+            onClick={() => setViewMode("upload")}
+            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === "upload" ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-slate-500 hover:text-slate-300"}`}
+          >
+            UPLOAD MODE
+          </button>
+          <button
+            onClick={() => setViewMode("live")}
+            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === "live" ? "bg-brand-orange text-white shadow-lg shadow-brand-orange/20" : "text-slate-500 hover:text-slate-300"}`}
+          >
+            LIVE MODE v4.0
+          </button>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        {viewMode === "upload" && appState === "done" && (
+          <button
+            onClick={() => {
+              setAppState("idle");
+              setResult(null);
+              setJobId(null);
+              setProcessingStage(null);
+              if (videoUrl) URL.revokeObjectURL(videoUrl);
+              setVideoUrl(null);
+            }}
+            className="text-xs text-slate-400 hover:text-slate-200 border border-brand-border px-3 py-1 rounded transition-colors"
+          >
+            New Analysis
+          </button>
+        )}
+      </div>
+    </header>
+  );
+
+  if (viewMode === "live") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-8">
+      <div className="min-h-screen flex flex-col" style={{ background: "#0f1117" }}>
+        {renderHeader()}
+        <LiveMonitor />
+      </div>
+    );
+  }
+
+  // Upload Mode - existing states but wrapped in common layout if needed
+  let content;
+  if (appState === "idle") {
+    content = (
+      <div className="flex-1 flex flex-col items-center justify-center p-8">
         <Header />
         <div
           onDrop={handleDrop}
@@ -107,11 +162,9 @@ export default function App() {
         </div>
       </div>
     );
-  }
-
-  if (appState === "uploading") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-8">
+  } else if (appState === "uploading") {
+    content = (
+      <div className="flex-1 flex flex-col items-center justify-center p-8">
         <Header />
         <div className="mt-10 w-full max-w-md">
           <p className="text-slate-300 mb-3 text-center">Uploading footage...</p>
@@ -127,18 +180,15 @@ export default function App() {
         </div>
       </div>
     );
-  }
-
-  if (appState === "processing") {
+  } else if (appState === "processing") {
     const stages = [
       { key: "extracting", label: "Listening to footage...", icon: "waveform" },
       { key: "analyzing_v1", label: "Reading transcript...", icon: "cursor" },
       { key: "analyzing_v2", label: "Watching the footage...", icon: "scanner" },
     ];
     const currentIdx = stages.findIndex((s) => s.key === processingStage);
-
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-8">
+    content = (
+      <div className="flex-1 flex flex-col items-center justify-center p-8">
         <style>{`
           @keyframes waveform {
             0%, 100% { height: 8px; }
@@ -212,7 +262,6 @@ export default function App() {
             {stages.map((stage, idx) => {
               const done = currentIdx > idx;
               const active = currentIdx === idx;
-              const pending = currentIdx < idx;
               
               return (
                 <div key={stage.key} className="flex flex-col">
@@ -237,11 +286,9 @@ export default function App() {
         </div>
       </div>
     );
-  }
-
-  if (appState === "error") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-8">
+  } else if (appState === "error") {
+    content = (
+      <div className="flex-1 flex flex-col items-center justify-center p-8">
         <Header />
         <div className="mt-10 text-center">
           <p className="text-red-400 text-lg mb-4">
@@ -256,33 +303,8 @@ export default function App() {
         </div>
       </div>
     );
-  }
-
-  // done state — 3-panel layout
-  return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#0f1117" }}>
-      <header className="flex items-center justify-between px-6 py-3 border-b border-brand-border">
-        <div className="flex items-center gap-3">
-          <span className="text-brand-orange font-bold text-xl tracking-wide">
-            HALOS
-          </span>
-          <span className="text-slate-400 text-sm">Video Insight Assistant</span>
-        </div>
-        <button
-          onClick={() => {
-            setAppState("idle");
-            setResult(null);
-            setJobId(null);
-            setProcessingStage(null);
-            if (videoUrl) URL.revokeObjectURL(videoUrl);
-            setVideoUrl(null);
-          }}
-          className="text-xs text-slate-400 hover:text-slate-200 border border-brand-border px-3 py-1 rounded transition-colors"
-        >
-          New Analysis
-        </button>
-      </header>
-
+  } else if (appState === "done") {
+    content = (
       <div className="flex flex-1 overflow-hidden p-4 gap-4">
         {/* Left: Video player (60%) */}
         <div className="w-3/5 flex flex-col gap-3">
@@ -315,6 +337,13 @@ export default function App() {
           <SearchPanel events={activeData?.events || []} onSeek={handleSeek} />
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: "#0f1117" }}>
+      {renderHeader()}
+      {content}
     </div>
   );
 }

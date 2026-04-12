@@ -1,11 +1,16 @@
 import os
 import uuid
 import json
+import hashlib
+import base64
+from datetime import datetime
+from pydantic import BaseModel
 from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from tasks import process_video, r
-from pipeline import analyze_v2_stream
+from pipeline import analyze_v2_stream, analyze_live_frame
+from audit import append_live_alert
 
 app = FastAPI(title="HALOS Video Insight Assistant")
 
@@ -103,3 +108,48 @@ async def analyze_stream(job_id: str):
             yield f"data: {chunk}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+class LiveFrameRequest(BaseModel):
+    frame: str  # base64_string
+    hash: str   # sha256_string
+    job_id: str = None
+
+
+@app.post("/analyze-live-frame")
+async def analyze_live(request: LiveFrameRequest):
+    # Verifies hash matches received frame
+    try:
+        frame_bytes = base64.b64decode(request.frame)
+        computed_hash = hashlib.sha256(frame_bytes).hexdigest()
+        if computed_hash != request.hash:
+            raise HTTPException(status_code=400, detail="Hash mismatch")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid frame data: {e}")
+
+    # Calls analyze_live_frame()
+    try:
+        analysis = analyze_live_frame(request.frame)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
+
+    label = analysis.get("label", "[NORMAL]")
+    description = analysis.get("description", "No description provided.")
+    confidence = analysis.get("confidence", 0.0)
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    
+    # Use provided job_id or generate one for the session (handled by frontend usually,
+    # but let's use timestamp if not provided as per requirements)
+    job_id = request.job_id or f"live_{timestamp.replace(':', '-')}"
+
+    # Logs to live_interventions in audit_log.json
+    append_live_alert(job_id, label, description, request.hash, timestamp)
+
+    return {
+        "label": label,
+        "description": description,
+        "confidence": confidence,
+        "hash": request.hash,
+        "timestamp": timestamp,
+        "job_id": job_id
+    }

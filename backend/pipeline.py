@@ -202,5 +202,36 @@ def analyze_v2_stream(segments: list, frames: list):
             yield delta
 
 
+def analyze_live_frame(base64_frame: str) -> dict:
+    """Analyze a single live frame using GPT-4o Vision."""
+    system_prompt = (
+        "You are a security AI for retail and law enforcement environments. "
+        "Analyze this frame and return ONLY valid JSON. "
+        "Focus on: aggressive gestures, unauthorized entry, unusual crowding, weapons."
+    )
+    
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_frame}", "detail": "low"},
+                    }
+                ],
+            },
+        ],
+        temperature=0.2,
+        response_format={"type": "json_object"}
+    )
+    
+    raw = response.choices[0].message.content.strip()
+    return json.loads(raw)
+
+
 # Backward-compatible alias
 analyze = analyze_v1
