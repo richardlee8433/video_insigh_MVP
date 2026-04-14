@@ -80,3 +80,27 @@ export async function analyzeLiveFrame(base64Frame, hash) {
   if (!response.ok) throw new Error(`Live analysis failed: ${response.status}`)
   return response.json()
 }
+
+export async function uploadBatch(files) {
+  const form = new FormData();
+  files.forEach(file => form.append("files", file));
+  const res = await fetch(`${BASE_URL}/analyze-batch`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Batch upload failed: ${res.status}`);
+  return res.json(); // { batch_id, job_ids }
+}
+
+export async function getBatchStatus(batchId) {
+  const res = await fetch(`${BASE_URL}/batch-status/${batchId}`);
+  if (!res.ok) throw new Error(`Batch status failed: ${res.status}`);
+  return res.json(); // { batch_id, jobs, all_done }
+}
+
+export async function searchEvents(query, jobIds = []) {
+  const res = await fetch(`${BASE_URL}/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, job_ids: jobIds }),
+  });
+  if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+  return res.json(); // array of result objects
+}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { uploadVideo, pollUntilDone } from "./api";
+import { uploadVideo, pollUntilDone, uploadBatch, getBatchStatus, getStatus } from "./api";
 import VideoPlayer from "./components/VideoPlayer";
 import InsightsPanel from "./components/InsightsPanel";
 import SearchPanel from "./components/SearchPanel";
@@ -13,6 +13,8 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [jobId, setJobId] = useState(null);
+  const [batchId, setBatchId] = useState(null);
+  const [batchJobIds, setBatchJobIds] = useState([]);
   const [activeVersion, setActiveVersion] = useState("v2");
   const [processingStage, setProcessingStage] = useState(null);
   const playerRef = useRef(null);
@@ -59,13 +61,71 @@ export default function App() {
     }
   }, []);
 
+  const handleFiles = useCallback(async (files) => {
+    if (!files || files.length === 0) return;
+
+    // Single file: use existing flow
+    if (files.length === 1) {
+      handleFile(files[0]);
+      return;
+    }
+
+    // Multiple files: batch flow
+    setAppState("uploading");
+    setUploadProgress(0);
+    setProcessingStage(null);
+
+    const progressInterval = setInterval(() => {
+      setUploadProgress((p) => Math.min(p + 10, 90));
+    }, 200);
+
+    try {
+      const { batch_id, job_ids } = await uploadBatch(Array.from(files));
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setBatchId(batch_id);
+      setBatchJobIds(job_ids);
+
+      // Use first file as the video preview
+      const blobUrl = URL.createObjectURL(files[0]);
+      setVideoUrl(blobUrl);
+      setJobId(job_ids[0]);
+      setAppState("processing");
+
+      // Poll batch status
+      const batchTimer = setInterval(async () => {
+        try {
+          const { jobs, all_done } = await getBatchStatus(batch_id);
+          const firstDone = jobs.find(j => j.status === "done");
+          if (firstDone) {
+            setProcessingStage("analyzing_v2");
+          }
+          if (all_done) {
+            clearInterval(batchTimer);
+            // Fetch result of first job for display
+            const { result } = await getStatus(job_ids[0]);
+            setResult(result);
+            setActiveVersion("v2");
+            setAppState("done");
+          }
+        } catch {
+          clearInterval(batchTimer);
+          setAppState("error");
+        }
+      }, 3000);
+    } catch {
+      clearInterval(progressInterval);
+      setAppState("error");
+    }
+  }, [handleFile]);
+
   const handleDrop = useCallback(
     (e) => {
       e.preventDefault();
-      const file = e.dataTransfer.files?.[0];
-      if (file) handleFile(file);
+      const files = e.dataTransfer.files;
+      if (files?.length) handleFiles(files);
     },
-    [handleFile]
+    [handleFiles]
   );
 
   const handleDragOver = (e) => e.preventDefault();
@@ -156,8 +216,9 @@ export default function App() {
             id="file-input"
             type="file"
             accept="video/*"
+            multiple
             className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0])}
+            onChange={(e) => handleFiles(e.target.files)}
           />
         </div>
       </div>
@@ -334,7 +395,11 @@ export default function App() {
             filename={v2Data?.filename || null}
             analyzedAt={v2Data?.audit?.analyzed_at || null}
           />
-          <SearchPanel events={activeData?.events || []} onSeek={handleSeek} />
+          <SearchPanel
+            events={activeData?.events || []}
+            onSeek={handleSeek}
+            jobIds={batchJobIds.length > 0 ? batchJobIds : (jobId ? [jobId] : [])}
+          />
         </div>
       </div>
     );

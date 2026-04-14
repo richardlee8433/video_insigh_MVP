@@ -5,3 +5,4 @@ openai
 ffmpeg-python
 python-multipart
 Pillow
+numpy

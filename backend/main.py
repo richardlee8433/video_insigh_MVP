@@ -3,16 +3,25 @@ import uuid
 import json
 import hashlib
 import base64
+import db
+import numpy as np
 from datetime import datetime
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from tasks import process_video, r
+from openai import OpenAI
 from pipeline import analyze_v2_stream, analyze_live_frame
 from audit import append_live_alert
 
-app = FastAPI(title="HALOS Video Insight Assistant")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db()
+    yield
+
+app = FastAPI(title="HALOS Video Insight Assistant", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -152,4 +161,114 @@ async def analyze_live(request: LiveFrameRequest):
         "hash": request.hash,
         "timestamp": timestamp,
         "job_id": job_id
+    }
+
+
+class SearchRequest(BaseModel):
+    query: str
+    job_ids: list[str] = []
+
+
+@app.post("/search")
+async def search_events(request: SearchRequest):
+    # 1. Embed query
+    client = OpenAI()
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=request.query
+    )
+    query_embedding = response.data[0].embedding
+
+    # 2. Fetch all events with embeddings
+    all_events = db.get_all_events_with_embeddings()
+
+    # 3. Filter by job_ids if provided
+    if request.job_ids:
+        all_events = [e for e in all_events if e["job_id"] in request.job_ids]
+
+    # 4. Compute cosine similarity
+    def cosine_similarity(a, b):
+        a, b = np.array(a), np.array(b)
+        return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+    results = []
+    for event in all_events:
+        score = cosine_similarity(query_embedding, event["embedding"])
+        # 5. Filter out results with score <= 0.4
+        if score > 0.4:
+            # 7. Add filename
+            filename = db.get_filename_for_job(event["job_id"])
+            results.append({
+                "job_id": event["job_id"],
+                "filename": filename,
+                "timestamp": event["timestamp"],
+                "seconds": event["seconds"],
+                "label": event["label"],
+                "description": event["description"],
+                "score": score
+            })
+
+    # 6. Sort by score descending and return top 10
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:10]
+
+
+@app.post("/analyze-batch")
+async def analyze_batch(background_tasks: BackgroundTasks, files: list[UploadFile] = File(...)):
+    batch_id = str(uuid.uuid4())
+    job_ids = []
+
+    for file in files:
+        job_id = str(uuid.uuid4())
+        job_ids.append(job_id)
+
+        job_dir = os.path.join(UPLOAD_DIR, job_id)
+        os.makedirs(job_dir, exist_ok=True)
+
+        original_filename = file.filename or "video.mp4"
+        ext = os.path.splitext(original_filename)[1] if original_filename else ".mp4"
+        video_path = os.path.join(job_dir, f"video{ext}")
+
+        contents = await file.read()
+        with open(video_path, "wb") as f:
+            f.write(contents)
+
+        # Initialize job state
+        r.hset(f"job:{job_id}", mapping={"status": "pending"})
+
+        # Save to batch table
+        db.save_batch(batch_id, job_id, original_filename)
+
+        background_tasks.add_task(process_video, job_id, video_path, original_filename)
+
+    return {"batch_id": batch_id, "job_ids": job_ids}
+
+
+@app.get("/batch-status/{batch_id}")
+async def get_batch_status(batch_id: str):
+    jobs_in_batch = db.get_jobs_in_batch(batch_id)
+    if not jobs_in_batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    jobs_status = []
+    all_done = True
+
+    for job in jobs_in_batch:
+        job_id = job["job_id"]
+        data = r.hgetall(f"job:{job_id}")
+        status = data.get(b"status", b"pending").decode()
+
+        jobs_status.append({
+            "job_id": job_id,
+            "filename": job["filename"],
+            "status": status
+        })
+
+        if status not in ["done", "error"]:
+            all_done = False
+
+    return {
+        "batch_id": batch_id,
+        "jobs": jobs_status,
+        "all_done": all_done
     }

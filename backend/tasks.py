@@ -1,6 +1,8 @@
 import json
 import hashlib
 import fakeredis
+import db
+from openai import OpenAI
 from pipeline import extract_audio, extract_frames, transcribe, analyze_v1, analyze_v2
 from audit import log_analysis
 
@@ -60,6 +62,20 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
         }
 
         _set_status(job_id, "done", combined)
+
+        # Persist to SQLite
+        db.save_job(job_id, filename)
+        event_ids = db.save_events(job_id, result_v2["events"])
+
+        # Generate embeddings for each event
+        client = OpenAI()
+        for i, event in enumerate(result_v2["events"]):
+            text = f"{event['label']}: {event['description']}"
+            response = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=text
+            )
+            db.save_embedding(event_ids[i], response.data[0].embedding)
     except Exception as e:
         _set_status(job_id, "error", {"error": str(e)})
         raise
