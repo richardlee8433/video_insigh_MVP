@@ -1,11 +1,12 @@
 import os
 import json
 import base64
-import ffmpeg
+import subprocess
 import imageio_ffmpeg
 import openai
 import numpy as np
 import hashlib
+import glob
 from datetime import datetime
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE
 
@@ -67,37 +68,27 @@ Return ONLY this JSON:
 """
 
 
-def extract_audio(video_path: str) -> str:
-    job_dir = os.path.dirname(video_path)
-    audio_path = os.path.join(job_dir, "audio.mp3")
-    (
-        ffmpeg
-        .input(video_path)
-        .output(audio_path, ac=1, ar="16000", acodec="libmp3lame", q=4)
-        .run(cmd=FFMPEG_BIN, overwrite_output=True, quiet=True)
-    )
+def extract_audio(video_path: str, job_id: str) -> str:
+    audio_path = f"/tmp/uploads/{job_id}/audio.mp3"
+    os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+    subprocess.run([
+        FFMPEG_BIN, '-i', video_path,
+        '-vn', '-acodec', 'libmp3lame', '-ac', '1', '-ar', '16000',
+        '-y', audio_path
+    ], check=True, capture_output=True)
     return audio_path
 
 
-def extract_frames(video_path: str, job_id: str) -> list:
-    """Extract one frame every 30 seconds from the video."""
-    job_dir = os.path.dirname(video_path)
-    frames_dir = os.path.join(job_dir, "frames")
+def extract_frames(video_path: str, job_id: str) -> list[str]:
+    frames_dir = f"/tmp/uploads/{job_id}/frames"
     os.makedirs(frames_dir, exist_ok=True)
-    output_pattern = os.path.join(frames_dir, "frame_%02d.jpg")
-    (
-        ffmpeg
-        .input(video_path)
-        .filter("fps", fps="1/30")
-        .output(output_pattern, vframes=999)
-        .run(cmd=FFMPEG_BIN, overwrite_output=True, quiet=True)
-    )
-    frames = sorted([
-        os.path.join(frames_dir, f)
-        for f in os.listdir(frames_dir)
-        if f.startswith("frame_") and f.endswith(".jpg")
-    ])
-    return frames
+    frames_pattern = f"{frames_dir}/frame_%03d.jpg"
+    subprocess.run([
+        FFMPEG_BIN, '-i', video_path,
+        '-vf', 'fps=1/30',
+        '-y', frames_pattern
+    ], check=True, capture_output=True)
+    return sorted(glob.glob(f"{frames_dir}/frame_*.jpg"))
 
 
 def transcribe(audio_path: str) -> dict:
@@ -337,6 +328,26 @@ def cosine_similarity(a, b):
         return 0.0
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
+def get_video_duration(video_path: str) -> float:
+    try:
+        # Use ffmpeg to get duration instead of ffprobe as imageio-ffmpeg only bundles ffmpeg
+        result = subprocess.run([
+            FFMPEG_BIN, '-i', video_path
+        ], capture_output=True, text=True)
+        # Duration is in stderr for ffmpeg -i
+        for line in result.stderr.split('\n'):
+            if "Duration" in line:
+                # Duration: 00:00:10.00, start: 0.000000, bitrate: 123 kb/s
+                parts = line.split(',')
+                for p in parts:
+                    if "Duration" in p:
+                        dur_str = p.split('Duration:')[1].strip()
+                        h, m, s = dur_str.split(':')
+                        return float(h)*3600 + float(m)*60 + float(s)
+    except:
+        pass
+    return 0.0
+
 def process_tactical(job_id: str, video_paths: list, target_description: str):
     from tasks import r
     def set_status(status: str, stage: str = None, result=None):
@@ -357,32 +368,21 @@ def process_tactical(job_id: str, video_paths: list, target_description: str):
             cam_key = f"camera_{i+1}"
             set_status("processing", stage=f"analyzing_camera_{i+1}")
             
-            # Get video duration
-            try:
-                probe = ffmpeg.probe(vid["path"], cmd=FFMPEG_BIN)
-                duration = float(probe['format']['duration'])
-            except:
-                duration = 0.0
+            duration = get_video_duration(vid["path"])
 
             # 1. Extract frames (1 per 5 seconds)
             job_dir = os.path.dirname(vid["path"])
             frames_dir = os.path.join(job_dir, f"frames_{cam_key}")
             os.makedirs(frames_dir, exist_ok=True)
-            output_pattern = os.path.join(frames_dir, "frame_%03d.jpg")
+            frames_pattern = f"{frames_dir}/frame_%03d.jpg"
             
-            (
-                ffmpeg
-                .input(vid["path"])
-                .filter("fps", fps="1/5")
-                .output(output_pattern)
-                .run(cmd=FFMPEG_BIN, overwrite_output=True, quiet=True)
-            )
+            subprocess.run([
+                FFMPEG_BIN, '-i', vid["path"],
+                '-vf', 'fps=1/5',
+                '-y', frames_pattern
+            ], check=True, capture_output=True)
             
-            frames = sorted([
-                os.path.join(frames_dir, f)
-                for f in os.listdir(frames_dir)
-                if f.startswith("frame_") and f.endswith(".jpg")
-            ])
+            frames = sorted(glob.glob(f"{frames_dir}/frame_*.jpg"))
             
             detections = []
             
