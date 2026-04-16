@@ -13,34 +13,46 @@ Analyze this security camera frame and return ONLY valid JSON.
 Detection Rules:
 
 1. Violence & Physical Threat
-   - Flag ALERT if: physical fighting, weapons visible, aggressive physical contact
-   - Flag CAUTION if: aggressive posturing, confrontational stance between individuals
+   - Flag ALERT if: physical fighting, weapons visible, aggressive physical contact,
+     pushing, shoving, grabbing, or pulling between individuals
+   - Flag CAUTION if: aggressive posturing, confrontational stance,
+     individuals in close aggressive proximity
 
-2. Crowd Density (estimate visible people count)
-   - NORMAL: fewer than 10 people, moving freely
-   - CAUTION: 10-20 people AND stationary or densely packed
-   - ALERT: more than 20 people AND stationary/densely packed OR visible pushing
+2. Crowd Density (count ALL visible people including background figures)
+   - Count everyone visible, including partially visible and background figures
+   - When in doubt, round UP your estimate
+   - NORMAL: fewer than 8 people total
+   - CAUTION: 8-15 people OR any visible crowding near entrance/doorway
+   - ALERT: more than 15 people OR visible pushing/blocking in crowd
 
-3. Unauthorized Access
+3. Vehicle Intrusion
+   - Flag ALERT if: any vehicle (car, van, motorcycle, bicycle) visible
+     on a pedestrian-only area, footpath, or inside a building/venue entrance
+   - Flag CAUTION if: vehicle stopped or moving slowly in area where
+     pedestrians are present and at risk
+   - NORMAL if: vehicle is clearly on a designated road with no pedestrian conflict
+
+4. Unauthorized Access
    - Flag ALERT if: person climbing, jumping barriers, entering restricted zones
-   - Flag CAUTION if: tailgating through access points, loitering near restricted areas
+   - Flag CAUTION if: tailgating through access points, loitering near
+     restricted areas, person in staff-only area
 
-4. Suspect Objects
+5. Suspect Objects
    - Flag ALERT if: visible weapons, large concealed objects, abandoned bags
    - Flag CAUTION if: person wearing full face covering in non-medical context
 
-5. Time-Based Context
-   Current time will be provided. Use it to adjust sensitivity:
-   - 11pm-5am: lower threshold for crowd flags (10+ people = CAUTION)
+6. Time-Based Sensitivity
+   Current time will be provided. Adjust thresholds:
+   - 11pm-5am: lower crowd threshold (6+ people = CAUTION, 12+ = ALERT)
    - 5am-11pm: standard thresholds apply
 
 Return ONLY this JSON:
 {
   "label": "[NORMAL]" | "[CAUTION]" | "[ALERT]",
-  "description": "one sentence, specific and factual",
+  "description": "one sentence, specific and factual, mention what triggered the flag",
   "confidence": 0.0-1.0,
-  "people_count": estimated number of visible people,
-  "primary_trigger": "violence" | "crowd_density" | "unauthorized_access" | "suspect_object" | "none"
+  "people_count": estimated total number of visible people,
+  "primary_trigger": "violence" | "crowd_density" | "vehicle_intrusion" | "unauthorized_access" | "suspect_object" | "none"
 }
 """
 

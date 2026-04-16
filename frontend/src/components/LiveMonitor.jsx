@@ -341,6 +341,7 @@ export default function LiveMonitor() {
   const getTriggerBadgeColor = (trigger) => {
     switch (trigger) {
       case "violence": return "bg-red-600 text-white";
+      case "vehicle_intrusion": return "bg-red-600 text-white";
       case "crowd_density": return "bg-amber-500 text-black";
       case "unauthorized_access": return "bg-orange-500 text-white";
       case "suspect_object": return "bg-purple-600 text-white";
