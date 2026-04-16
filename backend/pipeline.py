@@ -355,6 +355,13 @@ def process_tactical(job_id: str, video_paths: list, target_description: str):
             cam_key = f"camera_{i+1}"
             set_status("processing", stage=f"analyzing_camera_{i+1}")
             
+            # Get video duration
+            try:
+                probe = ffmpeg.probe(vid["path"])
+                duration = float(probe['format']['duration'])
+            except:
+                duration = 0.0
+
             # 1. Extract frames (1 per 5 seconds)
             job_dir = os.path.dirname(vid["path"])
             frames_dir = os.path.join(job_dir, f"frames_{cam_key}")
@@ -411,6 +418,12 @@ def process_tactical(job_id: str, video_paths: list, target_description: str):
                 try:
                     res = json.loads(raw)
                     if res.get("target_visible"):
+                        # Ensure timestamps are set
+                        if not res.get("target_timestamp"):
+                            res["target_timestamp"] = _format_timestamp(j * 5)
+                        if not res.get("target_seconds"):
+                            res["target_seconds"] = float(j * 5)
+
                         # Add embedding for visual description
                         emb_resp = client.embeddings.create(
                             model="text-embedding-3-small",
@@ -421,8 +434,8 @@ def process_tactical(job_id: str, video_paths: list, target_description: str):
                         
                         timeline.append({
                             "camera": vid["label"],
-                            "timestamp": res["target_timestamp"] or _format_timestamp(j * 5),
-                            "seconds": res["target_seconds"] or float(j * 5),
+                            "timestamp": res["target_timestamp"],
+                            "seconds": res["target_seconds"],
                             "description": res["visual_description"]
                         })
                 except:
@@ -431,7 +444,8 @@ def process_tactical(job_id: str, video_paths: list, target_description: str):
             all_camera_data[cam_key] = {
                 "detections": detections,
                 "sha256": file_hash,
-                "filename": vid["filename"]
+                "filename": vid["filename"],
+                "duration": duration
             }
 
         # 3. Matching Targets (Cosine Similarity)
@@ -465,8 +479,11 @@ def process_tactical(job_id: str, video_paths: list, target_description: str):
         detections_summary = ""
         for cam_key, data in all_camera_data.items():
             cam_label = next(v["label"] for v in video_paths if f"camera_{video_paths.index(v)+1}" == cam_key)
-            det_texts = [f"[{d['target_timestamp']}] {d['visual_description']}" for d in data["detections"]]
-            detections_summary += f"{cam_label}:\n" + "\n".join(det_texts) + "\n\n"
+            timestamps = [d['target_timestamp'] for d in data["detections"] if d.get('target_timestamp')]
+            if timestamps:
+                detections_summary += f"{cam_label}: target detected at {', '.join(timestamps)}\n"
+            else:
+                detections_summary += f"{cam_label}: no target detected\n"
 
         narrative_prompt = NARRATIVE_PROMPT.format(
             camera_detections=detections_summary,

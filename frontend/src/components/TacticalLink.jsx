@@ -277,23 +277,35 @@ All frames verified via SHA-256 hash integrity check.`;
             <section className="flex flex-col gap-4">
                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Target Timeline</h2>
                <div className="bg-slate-900 p-4 rounded-xl border border-brand-border h-32 relative flex flex-col gap-2">
-                  {Object.entries(result.cameras).map(([cam, data], idx) => (
-                    <div key={cam} className="flex items-center gap-3">
-                      <div className="w-12 text-[10px] font-bold text-slate-500 uppercase">{cam}</div>
-                      <div className="flex-1 h-3 bg-slate-800 rounded-full relative overflow-hidden">
-                        {data.detections.map((d, i) => (
-                          <div 
-                            key={i}
-                            onClick={() => syncSeek(d.target_seconds)}
-                            className="absolute h-full w-2 bg-brand-orange hover:bg-white cursor-pointer transition-colors"
-                            style={{ left: `${(d.target_seconds / 120) * 100}%` }} // Simplified 120s max for scale
-                            title={d.target_timestamp}
-                          />
-                        ))}
+                  {(() => {
+                    const maxDuration = Math.max(...Object.values(result.cameras).map(c => c.duration || 0), 1);
+                    return Object.entries(result.cameras).map(([cam, data], idx) => (
+                      <div key={cam} className="flex items-center gap-3">
+                        <div className="w-12 text-[10px] font-bold text-slate-500 uppercase">{cam}</div>
+                        <div className="flex-1 h-3 bg-slate-800 rounded-full relative">
+                          {data.detections.map((d, i) => (
+                            <div 
+                              key={i}
+                              onClick={() => syncSeek(d.target_seconds)}
+                              className="absolute bg-brand-orange hover:bg-white cursor-pointer transition-colors"
+                              style={{ 
+                                left: `${(d.target_seconds / maxDuration) * 100}%`,
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                top: '50%',
+                                transform: 'translate(-50%, -50%)'
+                              }}
+                              title={`${d.target_timestamp}: ${d.visual_description}`}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  <div className="absolute bottom-1 right-4 text-[8px] text-slate-600 font-mono">00:00 --- SCALE: 120s --- 02:00</div>
+                    ));
+                  })()}
+                  <div className="absolute bottom-1 right-4 text-[8px] text-slate-600 font-mono">
+                    00:00 --- SCALE: {Math.max(...Object.values(result.cameras).map(c => c.duration || 0), 0).toFixed(0)}s
+                  </div>
                </div>
             </section>
 
