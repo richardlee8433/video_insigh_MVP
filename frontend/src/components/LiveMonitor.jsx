@@ -21,6 +21,7 @@ export default function LiveMonitor() {
   const stallTimer = useRef(null);
   const forcePlayTimer = useRef(null);
   const hasTaintedCanvasWarned = useRef(false);
+  const alertsEndRef = useRef(null);
 
   const destroyHls = () => {
     if (samplingInterval.current) {
@@ -315,11 +316,25 @@ export default function LiveMonitor() {
     };
   }, [isActive, captureFrame]);
 
+  useEffect(() => {
+    alertsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [alerts]);
+
   const getLabelColor = (label) => {
     const l = label.toUpperCase();
     if (l.includes("ALERT")) return "bg-red-500 text-white";
     if (l.includes("CAUTION")) return "bg-amber-500 text-black";
     return "bg-green-500 text-white";
+  };
+
+  const getTriggerBadgeColor = (trigger) => {
+    switch (trigger) {
+      case "violence": return "bg-red-600 text-white";
+      case "crowd_density": return "bg-amber-500 text-black";
+      case "unauthorized_access": return "bg-orange-500 text-white";
+      case "suspect_object": return "bg-purple-600 text-white";
+      default: return "bg-slate-600 text-slate-300";
+    }
   };
 
   return (
@@ -434,7 +449,7 @@ export default function LiveMonitor() {
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Forensics Engine</span>
         </div>
         
-        <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+        <div className="overflow-y-auto max-h-[calc(100vh-120px)] scroll-smooth space-y-3 pr-2 custom-scrollbar">
           {alerts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-600 opacity-50">
               <div className="text-4xl mb-2">🛡️</div>
@@ -442,12 +457,12 @@ export default function LiveMonitor() {
             </div>
           ) : (
             alerts.map((alert) => (
-              <div 
-                key={alert.id} 
+              <div
+                key={alert.id}
                 className={`bg-brand-border/30 border border-brand-border rounded-lg p-3 hover:bg-brand-border/50 transition-colors cursor-pointer ${alert.label.includes('ALERT') ? 'border-red-900/50' : ''}`}
                 onClick={() => console.log("Snapshot saved to forensic vault:", alert.hash)}
               >
-                <div className="flex items-start justify-between mb-2">
+                <div className="flex items-start justify-between mb-1">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${getLabelColor(alert.label)}`}>
                     {alert.label}
                   </span>
@@ -455,9 +470,21 @@ export default function LiveMonitor() {
                     {new Date(alert.timestamp).toLocaleTimeString()}
                   </span>
                 </div>
-                <p className="text-sm text-slate-300 leading-relaxed mb-3">
+                {alert.primary_trigger && alert.primary_trigger !== "none" && (
+                  <div className="mb-2">
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${getTriggerBadgeColor(alert.primary_trigger)}`}>
+                      {alert.primary_trigger.replace("_", " ")}
+                    </span>
+                  </div>
+                )}
+                <p className="text-sm text-slate-300 leading-relaxed mb-2">
                   {alert.description}
                 </p>
+                {alert.people_count > 0 && (
+                  <p className="text-[10px] text-slate-400 mb-2">
+                    👥 Estimated: {alert.people_count} people
+                  </p>
+                )}
                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-brand-border/50">
                   <span className="text-[9px] text-slate-500 font-mono">
                     SHA256: {alert.hash.substring(0, 16)}...
@@ -469,6 +496,7 @@ export default function LiveMonitor() {
               </div>
             ))
           )}
+          <div ref={alertsEndRef} />
         </div>
       </div>
       

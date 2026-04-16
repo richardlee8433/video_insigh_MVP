@@ -3,7 +3,46 @@ import json
 import base64
 import ffmpeg
 import openai
+from datetime import datetime
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE
+
+LIVE_SYSTEM_PROMPT = """
+You are a professional Video Forensics AI for retail and law enforcement environments.
+Analyze this security camera frame and return ONLY valid JSON.
+
+Detection Rules:
+
+1. Violence & Physical Threat
+   - Flag ALERT if: physical fighting, weapons visible, aggressive physical contact
+   - Flag CAUTION if: aggressive posturing, confrontational stance between individuals
+
+2. Crowd Density (estimate visible people count)
+   - NORMAL: fewer than 10 people, moving freely
+   - CAUTION: 10-20 people AND stationary or densely packed
+   - ALERT: more than 20 people AND stationary/densely packed OR visible pushing
+
+3. Unauthorized Access
+   - Flag ALERT if: person climbing, jumping barriers, entering restricted zones
+   - Flag CAUTION if: tailgating through access points, loitering near restricted areas
+
+4. Suspect Objects
+   - Flag ALERT if: visible weapons, large concealed objects, abandoned bags
+   - Flag CAUTION if: person wearing full face covering in non-medical context
+
+5. Time-Based Context
+   Current time will be provided. Use it to adjust sensitivity:
+   - 11pm-5am: lower threshold for crowd flags (10+ people = CAUTION)
+   - 5am-11pm: standard thresholds apply
+
+Return ONLY this JSON:
+{
+  "label": "[NORMAL]" | "[CAUTION]" | "[ALERT]",
+  "description": "one sentence, specific and factual",
+  "confidence": 0.0-1.0,
+  "people_count": estimated number of visible people,
+  "primary_trigger": "violence" | "crowd_density" | "unauthorized_access" | "suspect_object" | "none"
+}
+"""
 
 
 def extract_audio(video_path: str) -> str:
@@ -204,42 +243,34 @@ def analyze_v2_stream(segments: list, frames: list):
 
 def analyze_live_frame(base64_frame: str) -> dict:
     """Analyze a single live frame using GPT-4o Vision."""
-    system_prompt = (
-        "You are a professional Video Forensics AI for retail and law enforcement environments. "
-        "Analyze this security camera frame and identify threats. "
-        "Focus on: "
-        "1. Violence or physical altercations "
-        "2. Suspect objects (weapons, masks, unusual items) "
-        "3. Tailgating or unauthorized entry into restricted zones "
-        "4. Unusual crowding or aggressive group behavior "
-        "\n\nReturn ONLY valid JSON: "
-        "{"
-        "  'label': '[NORMAL]' | '[CAUTION]' | '[ALERT]',"
-        "  'description': 'one sentence description of what you see',"
-        "  'confidence': 0.0-1.0"
-        "}"
-    )
-    
+    current_time = datetime.utcnow().strftime("%H:%M UTC")
+
     client = openai.OpenAI()
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": LIVE_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": [
                     {
+                        "type": "text",
+                        "text": f"Current time: {current_time}. Analyze this security camera frame."
+                    },
+                    {
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{base64_frame}", "detail": "low"},
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_frame}"
+                        }
                     }
                 ],
             },
         ],
-        temperature=0.2,
-        response_format={"type": "json_object"}
+        max_tokens=300
     )
-    
+
     raw = response.choices[0].message.content.strip()
+    raw = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(raw)
 
 
