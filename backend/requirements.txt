@@ -6,3 +6,4 @@ ffmpeg-python
 python-multipart
 Pillow
 numpy
+imageio-ffmpeg

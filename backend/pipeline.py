@@ -2,11 +2,15 @@ import os
 import json
 import base64
 import ffmpeg
+import imageio_ffmpeg
 import openai
 import numpy as np
 import hashlib
 from datetime import datetime
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE
+
+# Override ffmpeg executable to use imageio-ffmpeg's bundled binary
+FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 LIVE_SYSTEM_PROMPT = """
 You are a professional Video Forensics AI for retail and law enforcement environments.
@@ -70,8 +74,7 @@ def extract_audio(video_path: str) -> str:
         ffmpeg
         .input(video_path)
         .output(audio_path, ac=1, ar="16000", acodec="libmp3lame", q=4)
-        .overwrite_output()
-        .run(quiet=True)
+        .run(cmd=FFMPEG_PATH, overwrite_output=True, quiet=True)
     )
     return audio_path
 
@@ -87,8 +90,7 @@ def extract_frames(video_path: str, job_id: str) -> list:
         .input(video_path)
         .filter("fps", fps="1/30")
         .output(output_pattern, vframes=999)
-        .overwrite_output()
-        .run(quiet=True)
+        .run(cmd=FFMPEG_PATH, overwrite_output=True, quiet=True)
     )
     frames = sorted([
         os.path.join(frames_dir, f)
@@ -357,7 +359,7 @@ def process_tactical(job_id: str, video_paths: list, target_description: str):
             
             # Get video duration
             try:
-                probe = ffmpeg.probe(vid["path"])
+                probe = ffmpeg.probe(vid["path"], cmd=FFMPEG_PATH)
                 duration = float(probe['format']['duration'])
             except:
                 duration = 0.0
@@ -373,8 +375,7 @@ def process_tactical(job_id: str, video_paths: list, target_description: str):
                 .input(vid["path"])
                 .filter("fps", fps="1/5")
                 .output(output_pattern)
-                .overwrite_output()
-                .run(quiet=True)
+                .run(cmd=FFMPEG_PATH, overwrite_output=True, quiet=True)
             )
             
             frames = sorted([
