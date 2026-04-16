@@ -3,6 +3,7 @@ import uuid
 import json
 import hashlib
 import base64
+import subprocess
 import db
 import numpy as np
 from datetime import datetime
@@ -10,11 +11,13 @@ from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from tasks import process_video, r
 from openai import OpenAI
 from pipeline import analyze_v2_stream, analyze_live_frame
 from audit import append_live_alert
+
+YOUTUBE_URL = "https://www.youtube.com/watch?v=3nyPER2kzqk"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,6 +40,26 @@ UPLOAD_DIR = "/tmp/uploads"
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/live-url")
+async def get_live_url():
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "-g", "-f", "b", YOUTUBE_URL],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        url = result.stdout.strip()
+        if not url or result.returncode != 0:
+            raise ValueError("yt-dlp returned no URL")
+        return {"url": url, "source": "Temple Bar Dublin - Live"}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
 
 
 @app.post("/analyze")

@@ -95,6 +95,12 @@ export async function getBatchStatus(batchId) {
   return res.json(); // { batch_id, jobs, all_done }
 }
 
+export async function getLiveUrl() {
+  const response = await fetch(`${BASE_URL}/live-url`)
+  if (!response.ok) throw new Error('Failed to fetch live URL')
+  return response.json()
+}
+
 export async function searchEvents(query, jobIds = []) {
   const res = await fetch(`${BASE_URL}/search`, {
     method: "POST",

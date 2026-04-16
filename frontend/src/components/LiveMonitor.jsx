@@ -4,7 +4,8 @@ import { analyzeLiveFrame } from "../api";
 
 export default function LiveMonitor() {
   const [isActive, setIsActive] = useState(false);
-  const [streamUrl, setStreamUrl] = useState("https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8");
+  const [streamUrl, setStreamUrl] = useState("");
+  const [isFetchingUrl, setIsFetchingUrl] = useState(true);
   const [alerts, setAlerts] = useState([]);
   const [currentAlertStatus, setCurrentAlertStatus] = useState("NORMAL"); // NORMAL | CAUTION | ALERT
   const [sessionId, setSessionId] = useState(null);
@@ -21,7 +22,6 @@ export default function LiveMonitor() {
   const stallTimer = useRef(null);
   const forcePlayTimer = useRef(null);
   const hasTaintedCanvasWarned = useRef(false);
-  const alertsEndRef = useRef(null);
 
   const destroyHls = () => {
     if (samplingInterval.current) {
@@ -317,8 +317,19 @@ export default function LiveMonitor() {
   }, [isActive, captureFrame]);
 
   useEffect(() => {
-    alertsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [alerts]);
+    const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    setIsFetchingUrl(true);
+    fetch(`${BASE_URL}/live-url`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.url) setStreamUrl(data.url);
+        else setStreamUrl('https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+      })
+      .catch(() => {
+        setStreamUrl('https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+      })
+      .finally(() => setIsFetchingUrl(false));
+  }, []);
 
   const getLabelColor = (label) => {
     const l = label.toUpperCase();
@@ -418,7 +429,7 @@ export default function LiveMonitor() {
               type="text"
               value={streamUrl}
               onChange={(e) => setStreamUrl(e.target.value)}
-              placeholder="https://..."
+              placeholder={isFetchingUrl ? "Fetching live stream..." : "https://..."}
               className="w-full bg-black border border-brand-border rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-orange"
             />
           </div>
@@ -496,7 +507,6 @@ export default function LiveMonitor() {
               </div>
             ))
           )}
-          <div ref={alertsEndRef} />
         </div>
       </div>
       
