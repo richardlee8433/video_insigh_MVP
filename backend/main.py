@@ -3,7 +3,6 @@ import uuid
 import json
 import hashlib
 import base64
-import subprocess
 import db
 import numpy as np
 from datetime import datetime
@@ -16,8 +15,6 @@ from tasks import process_video, r
 from openai import OpenAI
 from pipeline import analyze_v2_stream, analyze_live_frame
 from audit import append_live_alert
-
-YOUTUBE_URL = "https://www.youtube.com/watch?v=3nyPER2kzqk"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,22 +41,10 @@ def health():
 
 @app.get("/live-url")
 async def get_live_url():
-    try:
-        result = subprocess.run(
-            ["yt-dlp", "-g", "-f", "b", YOUTUBE_URL],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        url = result.stdout.strip()
-        if not url or result.returncode != 0:
-            raise ValueError(result.stderr)
-        return { "url": url, "source": "Temple Bar Dublin - Live" }
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={ "error": str(e) }
-        )
+    return {
+        "url": "https://ITSStreamingBR2.dotd.la.gov/public/shr-cam-002.streams/playlist.m3u8",
+        "source": "Live CCTV Stream - Louisiana DOT"
+    }
 
 
 @app.post("/analyze")
