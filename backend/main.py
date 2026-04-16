@@ -8,7 +8,7 @@ import numpy as np
 from datetime import datetime
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
-from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from tasks import process_video, r
@@ -280,3 +280,48 @@ async def get_batch_status(batch_id: str):
         "jobs": jobs_status,
         "all_done": all_done
     }
+
+
+@app.post("/tactical-analyze")
+async def tactical_analyze(
+    background_tasks: BackgroundTasks, 
+    files: list[UploadFile] = File(...),
+    target_description: str = Form("silver sedan")
+):
+    job_id = str(uuid.uuid4())
+    job_dir = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    video_paths = []
+    for i, file in enumerate(files):
+        ext = os.path.splitext(file.filename or "")[1] or ".mp4"
+        video_path = os.path.join(job_dir, f"camera_{i+1}{ext}")
+        contents = await file.read()
+        with open(video_path, "wb") as f:
+            f.write(contents)
+        video_paths.append({
+            "path": video_path,
+            "filename": file.filename or f"camera_{i+1}.mp4",
+            "label": f"Camera {i+1}"
+        })
+
+    r.hset(f"tactical:{job_id}", mapping={"status": "uploading", "stage": "initializing"})
+
+    from pipeline import process_tactical
+    background_tasks.add_task(process_tactical, job_id, video_paths, target_description)
+
+    return {"job_id": job_id}
+
+
+@app.get("/tactical-status/{job_id}")
+async def get_tactical_status(job_id: str):
+    data = r.hgetall(f"tactical:{job_id}")
+    if not data:
+        raise HTTPException(status_code=404, detail="Tactical job not found")
+
+    status = data.get(b"status", b"pending").decode()
+    stage = data.get(b"stage", b"").decode() or None
+    result_raw = data.get(b"result")
+    result = json.loads(result_raw) if result_raw else None
+
+    return {"status": status, "stage": stage, "result": result}

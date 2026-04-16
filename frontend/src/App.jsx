@@ -5,9 +5,10 @@ import InsightsPanel from "./components/InsightsPanel";
 import SearchPanel from "./components/SearchPanel";
 import VersionToggle from "./components/VersionToggle";
 import LiveMonitor from "./components/LiveMonitor";
+import TacticalLink from "./components/TacticalLink";
 
 export default function App() {
-  const [viewMode, setViewMode] = useState("upload"); // upload | live
+  const [viewMode, setViewMode] = useState("upload"); // upload | live | tactical
   const [appState, setAppState] = useState("idle"); // idle | uploading | processing | done | error
   const [uploadProgress, setUploadProgress] = useState(0);
   const [result, setResult] = useState(null);
@@ -159,6 +160,12 @@ export default function App() {
           >
             LIVE MODE v4.0
           </button>
+          <button
+            onClick={() => setViewMode("tactical")}
+            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === "tactical" ? "bg-[#f97316] text-white shadow-lg shadow-[#f97316]/20" : "text-slate-500 hover:text-slate-300"}`}
+          >
+            TACTICAL-LINK ★
+          </button>
         </div>
       </div>
       <div className="flex items-center gap-3">
@@ -186,6 +193,15 @@ export default function App() {
       <div className="min-h-screen flex flex-col" style={{ background: "#0f1117" }}>
         {renderHeader()}
         <LiveMonitor />
+      </div>
+    );
+  }
+
+  if (viewMode === "tactical") {
+    return (
+      <div className="min-h-screen flex flex-col" style={{ background: "#0f1117" }}>
+        {renderHeader()}
+        <TacticalLink />
       </div>
     );
   }

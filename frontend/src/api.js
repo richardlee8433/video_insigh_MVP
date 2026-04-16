@@ -95,6 +95,21 @@ export async function getBatchStatus(batchId) {
   return res.json(); // { batch_id, jobs, all_done }
 }
 
+export async function uploadTactical(files, targetDescription) {
+  const form = new FormData();
+  files.forEach(file => form.append("files", file));
+  form.append("target_description", targetDescription);
+  const res = await fetch(`${BASE_URL}/tactical-analyze`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Tactical upload failed: ${res.status}`);
+  return res.json(); // { job_id }
+}
+
+export async function getTacticalStatus(jobId) {
+  const res = await fetch(`${BASE_URL}/tactical-status/${jobId}`);
+  if (!res.ok) throw new Error(`Tactical status failed: ${res.status}`);
+  return res.json(); // { status, stage, result }
+}
+
 export async function getLiveUrl() {
   const response = await fetch(`${BASE_URL}/live-url`)
   if (!response.ok) throw new Error('Failed to fetch live URL')
