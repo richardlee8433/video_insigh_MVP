@@ -28,11 +28,36 @@ export default function TacticalLink() {
     const uploadedFiles = cameras.filter(c => c !== null);
     if (uploadedFiles.length < 2) return;
 
+    // Add error logging
+    console.log('Uploading files:', uploadedFiles.map(file => file.name));
+
     setAppState("processing");
     setProcessingStage("initializing");
 
     try {
-      const { job_id } = await uploadTactical(uploadedFiles, targetDescription);
+      const formData = new FormData();
+      
+      // Add each video file with key "files"
+      cameras.forEach((file) => {
+        if (file) {
+          formData.append('files', file);
+        }
+      });
+      
+      // Add target description
+      formData.append('target_description', targetDescription);
+
+      const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      
+      // Fetch WITHOUT Content-Type header (let browser set multipart boundary)
+      const res = await fetch(`${BASE_URL}/tactical-analyze`, {
+        method: 'POST',
+        body: formData
+        // DO NOT set Content-Type header manually
+      });
+
+      if (!res.ok) throw new Error(`Tactical upload failed: ${res.status}`);
+      const { job_id } = await res.json();
       
       const poll = setInterval(async () => {
         try {
