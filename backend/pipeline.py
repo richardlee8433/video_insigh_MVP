@@ -21,9 +21,13 @@ Detection Rules:
 2. Crowd Density (count ALL visible people including background figures)
    - Count everyone visible, including partially visible and background figures
    - When in doubt, round UP your estimate
-   - NORMAL: fewer than 8 people total
-   - CAUTION: 8-15 people OR any visible crowding near entrance/doorway
-   - ALERT: more than 15 people OR visible pushing/blocking in crowd
+   - NORMAL: fewer than 20 people, moving freely
+   - CAUTION: 20-50 people OR visible crowding/blocking near entrance
+   - ALERT: more than 50 people OR visible pushing/blocking in crowd
+
+   Note: Temple Bar and busy street scenes with free-flowing pedestrians
+   are NORMAL even with many people. Only flag if movement is restricted
+   or crowd is stationary and densely packed.
 
 3. Vehicle Intrusion
    - Flag ALERT if: any vehicle (car, van, motorcycle, bicycle) visible
