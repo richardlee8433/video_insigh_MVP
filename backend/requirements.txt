@@ -6,4 +6,4 @@ ffmpeg-python
 python-multipart
 Pillow
 numpy
-yt-dlp
+pytubefix

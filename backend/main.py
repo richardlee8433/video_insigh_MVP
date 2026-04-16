@@ -3,7 +3,7 @@ import uuid
 import json
 import hashlib
 import base64
-import subprocess
+from pytubefix import YouTube
 import db
 import numpy as np
 from datetime import datetime
@@ -45,16 +45,24 @@ def health():
 @app.get("/live-url")
 async def get_live_url():
     try:
-        result = subprocess.run(
-            ["yt-dlp", "-g", "-f", "b", YOUTUBE_URL],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        url = result.stdout.strip()
-        if not url or result.returncode != 0:
-            raise ValueError("yt-dlp returned no URL")
-        return {"url": url, "source": "Temple Bar Dublin - Live"}
+        yt = YouTube(YOUTUBE_URL)
+        # For live streams, YouTube provides an HLS manifest URL (m3u8)
+        m3u8_url = yt.streaming_data.get('hlsManifestUrl')
+        
+        if not m3u8_url:
+            stream = yt.streams.filter(
+                adaptive=True,
+                file_extension="mp4"
+            ).order_by("resolution").last()
+            
+            if not stream or not stream.url:
+                raise ValueError("No stream URL found")
+            m3u8_url = stream.url
+            
+        return {
+            "url": m3u8_url,
+            "source": "Temple Bar Dublin - Live"
+        }
     except Exception as e:
         return JSONResponse(
             status_code=500,
