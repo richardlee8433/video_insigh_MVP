@@ -26,7 +26,7 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
         with open(video_path, 'rb') as f:
             file_hash = hashlib.sha256(f.read()).hexdigest()
 
-        audio_path = extract_audio(video_path)
+        audio_path = extract_audio(video_path, job_id)
 
         transcript = transcribe(audio_path)
         segments = transcript["segments"]
