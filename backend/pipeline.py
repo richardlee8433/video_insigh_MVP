@@ -69,11 +69,11 @@ Return ONLY this JSON:
 
 
 def extract_audio(video_path: str, job_id: str) -> str:
-    audio_path = f"/tmp/uploads/{job_id}/audio.aac"
+    audio_path = f"/tmp/uploads/{job_id}/audio.wav"
     os.makedirs(os.path.dirname(audio_path), exist_ok=True)
     subprocess.run([
         FFMPEG_BIN, '-i', video_path,
-        '-vn', '-acodec', 'aac', '-ac', '1', '-ar', '16000',
+        '-vn', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000',
         '-y', audio_path
     ], check=True, capture_output=True)
     return audio_path
