@@ -5,6 +5,7 @@ import hashlib
 import base64
 import db
 import numpy as np
+import yt_dlp
 from datetime import datetime
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
@@ -170,6 +171,65 @@ async def analyze_live(request: LiveFrameRequest):
         "timestamp": timestamp,
         "job_id": job_id
     }
+
+
+class UrlRequest(BaseModel):
+    url: str
+
+
+@app.post("/analyze-url")
+async def analyze_url(request: UrlRequest, background_tasks: BackgroundTasks):
+    job_id = str(uuid.uuid4())
+    job_dir = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    ydl_opts = {
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "outtmpl": os.path.join(job_dir, "%(title)s.%(ext)s"),
+        "quiet": True,
+        "no_warnings": True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(request.url, download=True)
+            title = info.get("title", "video")
+            video_path = ydl.prepare_filename(info)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"yt-dlp download failed: {e}")
+
+    if not os.path.exists(video_path):
+        # yt-dlp may have merged into a different extension
+        candidates = [f for f in os.listdir(job_dir) if not f.endswith(".part")]
+        if not candidates:
+            raise HTTPException(status_code=500, detail="Downloaded file not found")
+        video_path = os.path.join(job_dir, candidates[0])
+
+    r.hset(f"job:{job_id}", mapping={"status": "pending"})
+    background_tasks.add_task(process_video, job_id, video_path, title)
+
+    return {"job_id": job_id, "title": title}
+
+
+class LocalFileRequest(BaseModel):
+    path: str
+
+
+@app.post("/analyze-local")
+async def analyze_local(request: LocalFileRequest, background_tasks: BackgroundTasks):
+    if not os.path.exists(request.path):
+        raise HTTPException(status_code=404, detail=f"File not found: {request.path}")
+
+    job_id = str(uuid.uuid4())
+    job_dir = os.path.join(UPLOAD_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    filename = os.path.basename(request.path)
+
+    r.hset(f"job:{job_id}", mapping={"status": "pending"})
+    background_tasks.add_task(process_video, job_id, request.path, filename)
+
+    return {"job_id": job_id, "filename": filename}
 
 
 class SearchRequest(BaseModel):

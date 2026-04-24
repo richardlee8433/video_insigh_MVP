@@ -6,3 +6,4 @@ python-multipart
 Pillow
 numpy
 imageio-ffmpeg
+yt-dlp

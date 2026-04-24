@@ -2,16 +2,19 @@ import os
 import json
 import base64
 import subprocess
-import imageio_ffmpeg
 import openai
 import numpy as np
 import hashlib
 import glob
+import cv2
 from datetime import datetime
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE
 
-# Override ffmpeg executable to use imageio-ffmpeg's bundled binary
-FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
+try:
+    import imageio_ffmpeg
+    FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
+except (ImportError, RuntimeError):
+    FFMPEG_BIN = "ffmpeg"
 
 LIVE_SYSTEM_PROMPT = """
 You are a professional Video Forensics AI for retail and law enforcement environments.
@@ -68,27 +71,72 @@ Return ONLY this JSON:
 """
 
 
+WHISPER_SIZE_LIMIT = 25 * 1024 * 1024  # 25 MB
+
+
 def extract_audio(video_path: str, job_id: str) -> str:
-    audio_path = f"/tmp/uploads/{job_id}/audio.wav"
-    os.makedirs(os.path.dirname(audio_path), exist_ok=True)
-    subprocess.run([
+    job_tmp = f"/tmp/uploads/{job_id}"
+    os.makedirs(job_tmp, exist_ok=True)
+
+    # Always produce a compressed mono 16 kHz mp3 — ~14 MB/hour, well under Whisper's 25 MB limit.
+    # Uncompressed PCM at 16 kHz mono is ~115 MB/hour and reliably hits the 413 limit.
+    audio_path = f"{job_tmp}/audio_compressed.mp3"
+    result = subprocess.run([
         FFMPEG_BIN, '-i', video_path,
-        '-vn', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000',
+        '-vn', '-ac', '1', '-ar', '16000', '-b:a', '32k',
         '-y', audio_path
-    ], check=True, capture_output=True)
+    ], capture_output=True)
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg audio extraction failed: {result.stderr.decode(errors='replace')}"
+        )
+
+    size = os.path.getsize(audio_path)
+    if size > WHISPER_SIZE_LIMIT:
+        raise RuntimeError(
+            f"Compressed audio is {size / 1024 / 1024:.1f} MB — still over Whisper's 25 MB limit. "
+            "File may be extremely long."
+        )
+
     return audio_path
 
 
-def extract_frames(video_path: str, job_id: str) -> list[str]:
+def extract_frames(video_path: str, job_id: str, fps: str = "1/5") -> list[str]:
     frames_dir = f"/tmp/uploads/{job_id}/frames"
     os.makedirs(frames_dir, exist_ok=True)
     frames_pattern = f"{frames_dir}/frame_%03d.jpg"
     subprocess.run([
         FFMPEG_BIN, '-i', video_path,
-        '-vf', 'fps=1/30',
+        '-vf', f'fps={fps}',
         '-y', frames_pattern
-    ], check=True, capture_output=True)
-    return sorted(glob.glob(f"{frames_dir}/frame_*.jpg"))
+    ], capture_output=True)  # no check=True — audio-only files produce no frames
+
+    all_frames = sorted(glob.glob(f"{frames_dir}/frame_*.jpg"))
+    if not all_frames:
+        return []
+
+    sharp_frames = []
+    discarded = 0
+    for path in all_frames:
+        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            discarded += 1
+            continue
+        sharpness = cv2.Laplacian(img, cv2.CV_64F).var()
+        if sharpness >= 50:
+            sharp_frames.append((path, sharpness))
+        else:
+            discarded += 1
+
+    print(f"[extract_frames] extracted={len(all_frames)}, sharp={len(sharp_frames)}, discarded={discarded}")
+
+    # Fall back to all frames if sharpness filter would return nothing
+    if not sharp_frames:
+        print("[extract_frames] all frames below sharpness threshold — returning all frames as fallback")
+        return all_frames
+
+    return [p for p, _ in sorted(sharp_frames, key=lambda x: x[0])]
 
 
 def transcribe(audio_path: str) -> dict:
@@ -250,6 +298,99 @@ def analyze_v2_stream(segments: list, frames: list):
         
         if delta:
             yield delta
+
+
+BODYCAM_SYSTEM_PROMPT = """
+You are a forensic AI analyzing police body camera footage.
+Unlike static security cameras, body cam footage is high-motion
+and first-person. Apply these principles:
+
+TEMPORAL REASONING: Reason across frames as a sequence, not
+individually. Use context from earlier frames to interpret later ones.
+MOTION INTERPRETATION:
+
+Uniform camera shake across the whole frame = officer running/moving
+Localized motion within the frame = subject moving independently
+Sudden frame stabilization after chaos = physical contact/takedown
+
+
+ENVIRONMENTAL TRACKING: Note landmarks (fences, vehicles, buildings)
+to reconstruct movement path even across shaky frames.
+AUDIO-VISUAL FUSION: When transcript mentions commands ("stop",
+"hands up", "get down"), correlate with visual frame at that timestamp.
+KEY EVENT TYPES for body cam:
+
+Foot pursuit initiated
+Obstacle overcome (fence, wall, vehicle)
+Subject contact / takedown
+Weapon drawn
+Arrest / restraint applied
+Officer requests backup
+
+
+
+Return JSON in exactly this format:
+{
+"summary": "2-3 sentence factual narrative of the entire incident",
+"events": [
+{
+"timestamp": "MM:SS",
+"seconds": float,
+"label": "short event label",
+"description": "one factual sentence",
+"detection_source": "visual" | "audio" | "both"
+}
+]
+}
+"""
+
+
+def analyze_v3(segments: list, frames: list) -> dict:
+    """Body cam forensics analysis (v3.0) — high-detail, more frames, bodycam-tuned prompt."""
+    transcript_lines = []
+    for seg in segments:
+        ts = _format_timestamp(seg["start"])
+        transcript_lines.append(f"[{ts}] {seg['text']}")
+    transcript_text = "\n".join(transcript_lines)
+
+    n = len(frames)
+    vision_intro = (
+        f"You have access to {n} frames extracted from body camera footage at 1 frame every 5 seconds. "
+        "Reason across the frames as a temporal sequence. "
+        "Use both the visual frames AND the transcript to identify key events. "
+        "For each event, note if it was detected visually, from audio, or both."
+    )
+
+    image_blocks = []
+    for frame_path in frames[:20]:
+        with open(frame_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        image_blocks.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "high"},
+        })
+
+    user_content = [
+        {"type": "text", "text": vision_intro},
+        *image_blocks,
+        {"type": "text", "text": USER_TEMPLATE.format(transcript_text=transcript_text)},
+    ]
+
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": BODYCAM_SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=0.2,
+    )
+    raw = response.choices[0].message.content.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return json.loads(raw)
 
 
 def analyze_live_frame(base64_frame: str) -> dict:

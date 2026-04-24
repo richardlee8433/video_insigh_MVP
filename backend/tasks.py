@@ -1,9 +1,11 @@
 import json
 import hashlib
+import numpy as np
 import fakeredis
 import db
 from openai import OpenAI
-from pipeline import extract_audio, extract_frames, transcribe, analyze_v1, analyze_v2
+import cv2
+from pipeline import extract_audio, extract_frames, transcribe, analyze_v1, analyze_v2, analyze_v3
 from audit import log_analysis
 
 r = fakeredis.FakeRedis()
@@ -37,12 +39,30 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
         # Block 1: Extract frames for vision analysis
         frames = extract_frames(video_path, job_id)
 
+        # Detect body cam footage: low avg sharpness + high motion variance
+        analysis_mode = "standard_v2"
+        if frames:
+            sharpness_scores = []
+            for path in frames:
+                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                if img is not None:
+                    sharpness_scores.append(cv2.Laplacian(img, cv2.CV_64F).var())
+            if sharpness_scores:
+                avg_sharpness = sum(sharpness_scores) / len(sharpness_scores)
+                motion_variance = float(np.var(sharpness_scores))
+                if avg_sharpness < 80 and motion_variance > 500:
+                    analysis_mode = "bodycam_v3"
+                    print(f"[process_video] bodycam detected (avg_sharpness={avg_sharpness:.1f}, motion_variance={motion_variance:.1f}) — using analyze_v3")
+
         # Block 5: Run both analyses
         _set_status(job_id, "processing", stage="analyzing_v1")
         result_v1 = analyze_v1(segments)
 
         _set_status(job_id, "processing", stage="analyzing_v2")
-        result_v2 = analyze_v2(segments, frames)
+        if analysis_mode == "bodycam_v3":
+            result_v2 = analyze_v3(segments, frames)
+        else:
+            result_v2 = analyze_v2(segments, frames)
 
         # Block 3: Audit log
         audit = log_analysis(job_id, filename, file_hash, "gpt-4o")
@@ -58,6 +78,7 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
                 "file_hash": file_hash,
                 "filename": filename,
                 "audit": audit,
+                "analysis_mode": analysis_mode,
             }
         }
 
