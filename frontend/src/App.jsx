@@ -410,6 +410,7 @@ export default function App() {
             fileHash={v2Data?.file_hash || null}
             filename={v2Data?.filename || null}
             analyzedAt={v2Data?.audit?.analyzed_at || null}
+            geminiData={result?.gemini || null}
           />
           <SearchPanel
             events={activeData?.events || []}

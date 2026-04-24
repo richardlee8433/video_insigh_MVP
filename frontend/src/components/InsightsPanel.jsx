@@ -10,17 +10,22 @@ export default function InsightsPanel({
   fileHash,
   filename,
   analyzedAt,
+  geminiData,
 }) {
   const isV2 = activeVersion === "v2";
+  const [activeModel, setActiveModel] = React.useState("gpt4o");
+
+  const displaySummary = activeModel === "gemini" && geminiData ? geminiData.summary : summary;
+  const displayEvents = activeModel === "gemini" && geminiData ? geminiData.events : events;
 
   // Typewriter effect state
   const [displayedSummary, setDisplayedSummary] = React.useState("");
   const [revealedEventsCount, setRevealedEventsCount] = React.useState(0);
 
   React.useEffect(() => {
-    if (isV2 && typeof summary === "string" && summary.length > 0) {
+    if (isV2 && typeof displaySummary === "string" && displaySummary.length > 0) {
       setDisplayedSummary("");
-      const words = summary.trim().split(/\s+/);
+      const words = displaySummary.trim().split(/\s+/);
       let currentWord = 0;
       const timer = setInterval(() => {
         if (currentWord < words.length) {
@@ -32,28 +37,28 @@ export default function InsightsPanel({
         } else {
           clearInterval(timer);
         }
-      }, 50); // Word by word
+      }, 50);
       return () => clearInterval(timer);
     } else {
-      setDisplayedSummary(summary || "");
+      setDisplayedSummary(displaySummary || "");
     }
-  }, [summary, isV2]);
+  }, [displaySummary, isV2]);
 
   React.useEffect(() => {
-    if (isV2 && events.length > 0) {
+    if (isV2 && displayEvents.length > 0) {
       setRevealedEventsCount(0);
       const timer = setInterval(() => {
         setRevealedEventsCount((prev) => {
-          if (prev < events.length) return prev + 1;
+          if (prev < displayEvents.length) return prev + 1;
           clearInterval(timer);
           return prev;
         });
-      }, 200); // 200ms delay between events
+      }, 200);
       return () => clearInterval(timer);
     } else {
-      setRevealedEventsCount(events.length);
+      setRevealedEventsCount(displayEvents.length);
     }
-  }, [events, isV2]);
+  }, [displayEvents, isV2]);
 
   async function handleDownloadReport() {
     console.log("[EvidenceReport] button clicked, jobId:", jobId);
@@ -107,8 +112,8 @@ export default function InsightsPanel({
   return (
     <div className="flex flex-col bg-brand-surface rounded-lg border border-brand-border overflow-hidden flex-1 min-h-0">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-brand-border flex items-center justify-between">
-        <div>
+      <div className="px-4 py-3 border-b border-brand-border flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">
             AI Summary
           </h2>
@@ -116,21 +121,47 @@ export default function InsightsPanel({
             {isV2 ? "v2.0 — Vision + Integrity" : "v1.0 — Text Analysis Only"}
           </p>
         </div>
-        {isV2 && (
-          <button
-            onClick={handleDownloadReport}
-            className="text-xs text-brand-orange border border-brand-orange px-2.5 py-1 rounded-lg hover:bg-brand-orange hover:text-white transition-colors font-semibold shrink-0"
-          >
-            Download Evidence Report
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {isV2 && geminiData && (
+            <div className="flex rounded-lg overflow-hidden border border-brand-border">
+              <button
+                onClick={() => setActiveModel("gpt4o")}
+                style={{
+                  background: activeModel === "gpt4o" ? "#FF6B2B" : "transparent",
+                  color: activeModel === "gpt4o" ? "#fff" : "#94a3b8",
+                }}
+                className="px-2.5 py-1 text-xs font-semibold transition-colors"
+              >
+                GPT-4o
+              </button>
+              <button
+                onClick={() => setActiveModel("gemini")}
+                style={{
+                  background: activeModel === "gemini" ? "#FF6B2B" : "transparent",
+                  color: activeModel === "gemini" ? "#fff" : "#94a3b8",
+                }}
+                className="px-2.5 py-1 text-xs font-semibold transition-colors border-l border-brand-border"
+              >
+                Gemini Flash
+              </button>
+            </div>
+          )}
+          {isV2 && (
+            <button
+              onClick={handleDownloadReport}
+              className="text-xs text-brand-orange border border-brand-orange px-2.5 py-1 rounded-lg hover:bg-brand-orange hover:text-white transition-colors font-semibold"
+            >
+              Download Evidence Report
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary */}
       <div className="px-4 py-3 border-b border-brand-border">
         <p className="text-sm text-slate-300 leading-relaxed min-h-[4em]">
           {displayedSummary}
-          {isV2 && displayedSummary !== summary && (
+          {isV2 && displayedSummary !== displaySummary && (
             <span className="inline-block w-2 h-4 bg-brand-orange ml-1 animate-pulse align-middle" />
           )}
         </p>
@@ -166,9 +197,9 @@ export default function InsightsPanel({
       </div>
 
       <div className="overflow-y-auto flex-1">
-        {events.map((event, i) => (
+        {displayEvents.map((event, i) => (
           <div
-            key={i}
+            key={`${activeModel}-${i}`}
             className="transition-all duration-500"
             style={{
               opacity: i < revealedEventsCount ? 1 : 0,

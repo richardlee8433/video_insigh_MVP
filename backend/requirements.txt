@@ -7,3 +7,4 @@ Pillow
 numpy
 imageio-ffmpeg
 yt-dlp
+google-generativeai

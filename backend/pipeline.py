@@ -6,6 +6,7 @@ import openai
 import numpy as np
 import hashlib
 import glob
+import google.generativeai as genai
 from PIL import Image, ImageFilter
 from datetime import datetime
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE
@@ -425,6 +426,38 @@ def analyze_live_frame(base64_frame: str) -> dict:
     raw = response.choices[0].message.content.strip()
     raw = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(raw)
+
+
+_GEMINI_SYSTEM_PROMPT = (
+    "You are a forensic AI analyzing body camera footage. "
+    "Analyze this video and return ONLY valid JSON, no markdown, no backticks: "
+    '{"summary": "2-3 sentence factual narrative", "events": ['
+    '{"timestamp": "MM:SS", "seconds": 0.0, "label": "short event label", '
+    '"description": "one factual sentence", "detection_source": "visual"}]}'
+)
+
+
+def analyze_gemini(video_path: str) -> dict:
+    """Gemini 2.5 Flash direct video analysis."""
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        genai.configure(api_key=api_key)
+
+        video_file = genai.upload_file(video_path)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(
+            [_GEMINI_SYSTEM_PROMPT, video_file],
+            generation_config={"temperature": 0.2},
+        )
+        raw = response.text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return json.loads(raw)
+    except Exception as e:
+        print(f"[analyze_gemini] failed: {e}")
+        return {"summary": "Gemini analysis unavailable", "events": []}
 
 
 # Backward-compatible alias

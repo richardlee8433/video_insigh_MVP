@@ -5,7 +5,7 @@ import fakeredis
 import db
 from openai import OpenAI
 from PIL import Image, ImageFilter
-from pipeline import extract_audio, extract_frames, transcribe, analyze_v1, analyze_v2, analyze_v3
+from pipeline import extract_audio, extract_frames, transcribe, analyze_v1, analyze_v2, analyze_v3, analyze_gemini
 from audit import log_analysis
 
 r = fakeredis.FakeRedis()
@@ -83,6 +83,15 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
                 "analysis_mode": analysis_mode,
             }
         }
+
+        if analysis_mode == "bodycam_v3":
+            gemini_result = analyze_gemini(video_path)
+            combined["gemini"] = {
+                "summary": gemini_result.get("summary", ""),
+                "events": gemini_result.get("events", []),
+            }
+        else:
+            combined["gemini"] = None
 
         _set_status(job_id, "done", combined)
 
