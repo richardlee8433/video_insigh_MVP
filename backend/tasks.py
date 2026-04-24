@@ -54,7 +54,7 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
                 motion_variance = float(np.var(sharpness_scores))
                 if avg_sharpness < 80 and motion_variance > 500:
                     analysis_mode = "bodycam_v3"
-                    print(f"[process_video] bodycam detected (avg_sharpness={avg_sharpness:.1f}, motion_variance={motion_variance:.1f}) — using analyze_v3")
+                print(f"[bodycam_detect] avg_sharpness={avg_sharpness:.1f}, motion_variance={motion_variance:.1f}, mode={analysis_mode}")
 
         # Block 5: Run both analyses
         _set_status(job_id, "processing", stage="analyzing_v1")
@@ -85,11 +85,16 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
         }
 
         if analysis_mode == "bodycam_v3":
-            gemini_result = analyze_gemini(video_path)
-            combined["gemini"] = {
-                "summary": gemini_result.get("summary", ""),
-                "events": gemini_result.get("events", []),
-            }
+            try:
+                gemini_result = analyze_gemini(video_path)
+                print(f"[gemini] analysis complete, events={len(gemini_result.get('events', []))}")
+                combined["gemini"] = {
+                    "summary": gemini_result.get("summary", ""),
+                    "events": gemini_result.get("events", []),
+                }
+            except Exception as e:
+                print(f"[gemini] ERROR: {e}")
+                combined["gemini"] = {"summary": "Gemini analysis unavailable", "events": []}
         else:
             combined["gemini"] = None
 
