@@ -6,7 +6,7 @@ import openai
 import numpy as np
 import hashlib
 import glob
-import cv2
+from PIL import Image, ImageFilter
 from datetime import datetime
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE
 
@@ -119,11 +119,12 @@ def extract_frames(video_path: str, job_id: str, fps: str = "1/5") -> list[str]:
     sharp_frames = []
     discarded = 0
     for path in all_frames:
-        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        if img is None:
+        try:
+            img = Image.open(path).convert("L")
+            sharpness = np.array(img.filter(ImageFilter.FIND_EDGES)).var()
+        except Exception:
             discarded += 1
             continue
-        sharpness = cv2.Laplacian(img, cv2.CV_64F).var()
         if sharpness >= 50:
             sharp_frames.append((path, sharpness))
         else:

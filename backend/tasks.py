@@ -4,7 +4,7 @@ import numpy as np
 import fakeredis
 import db
 from openai import OpenAI
-import cv2
+from PIL import Image, ImageFilter
 from pipeline import extract_audio, extract_frames, transcribe, analyze_v1, analyze_v2, analyze_v3
 from audit import log_analysis
 
@@ -44,9 +44,11 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
         if frames:
             sharpness_scores = []
             for path in frames:
-                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-                if img is not None:
-                    sharpness_scores.append(cv2.Laplacian(img, cv2.CV_64F).var())
+                try:
+                    img = Image.open(path).convert("L")
+                    sharpness_scores.append(np.array(img.filter(ImageFilter.FIND_EDGES)).var())
+                except Exception:
+                    continue
             if sharpness_scores:
                 avg_sharpness = sum(sharpness_scores) / len(sharpness_scores)
                 motion_variance = float(np.var(sharpness_scores))
