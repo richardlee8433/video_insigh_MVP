@@ -126,7 +126,7 @@ def extract_frames(video_path: str, job_id: str, fps: str = "1/5") -> list[str]:
         except Exception:
             discarded += 1
             continue
-        if sharpness >= 50:
+        if sharpness >= 100:
             sharp_frames.append((path, sharpness))
         else:
             discarded += 1

@@ -52,7 +52,7 @@ def process_video(job_id: str, video_path: str, filename: str = "video.mp4"):
             if sharpness_scores:
                 avg_sharpness = sum(sharpness_scores) / len(sharpness_scores)
                 motion_variance = float(np.var(sharpness_scores))
-                if avg_sharpness < 80 and motion_variance > 500:
+                if avg_sharpness < 2000 and motion_variance > 50000:
                     analysis_mode = "bodycam_v3"
                 print(f"[bodycam_detect] avg_sharpness={avg_sharpness:.1f}, motion_variance={motion_variance:.1f}, mode={analysis_mode}")
 
