@@ -443,7 +443,18 @@ def analyze_gemini(video_path: str) -> dict:
         api_key = os.environ.get("GEMINI_API_KEY")
         genai.configure(api_key=api_key)
 
-        video_file = genai.upload_file(video_path)
+        import time
+        video_file = genai.upload_file(video_path, mime_type="video/mp4")
+
+        max_wait = 60
+        waited = 0
+        while video_file.state.name != "ACTIVE":
+            if waited >= max_wait:
+                raise RuntimeError("Gemini file upload timed out")
+            time.sleep(3)
+            waited += 3
+            video_file = genai.get_file(video_file.name)
+
         model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(
             [_GEMINI_SYSTEM_PROMPT, video_file],
